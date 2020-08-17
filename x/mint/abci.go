@@ -8,18 +8,16 @@ import (
 )
 
 var (
-
-	// SatoshiPerBitcoin is the number of satoshi in one bitcoin (1 BTC).
-	// SatoshiPerBitcoin = 1e8
 	abhpPerBhp = sdk.PowerReduction.BigInt()
 
-	// baseSubsidy is the starting subsidy amount for mined blocks.  This
+	// baseSubsidy is the starting subsidy amount for new blocks.  This
 	// value is halved every SubsidyHalvingInterval blocks.
-	// baseSubsidy = 50 * SatoshiPerBitcoin
+	// It is 50 BHP initially.
 	baseSubsidy = new(big.Int).Mul(abhpPerBhp, big.NewInt(50))
 
 	// SubsidyReductionInterval is the halving interval
-	// SubsidyReductionInterval = 210000
+	// BTC reduction interval is 210000  blocks for about 10 minutes a new block.
+	// BHP block interval is 15 seconds so our reduction interval is 210000*40
 	SubsidyReductionInterval = int64(210000 * 40)
 )
 
