@@ -17,7 +17,7 @@ import (
 	"github.com/cosmos/cosmos-sdk/x/distribution"
 	distr "github.com/cosmos/cosmos-sdk/x/distribution"
 	"github.com/cosmos/cosmos-sdk/x/gov"
-	"github.com/cosmos/cosmos-sdk/x/mint"
+	// "github.com/cosmos/cosmos-sdk/x/mint"
 	"github.com/cosmos/cosmos-sdk/x/slashing"
 	"github.com/cosmos/cosmos-sdk/x/staking"
 	"github.com/cosmos/cosmos-sdk/x/supply"
@@ -52,7 +52,7 @@ func TestGetSimulationLog(t *testing.T) {
 		kvPair cmn.KVPair
 	}{
 		{auth.StoreKey, cmn.KVPair{Key: auth.AddressStoreKey(delAddr1), Value: cdc.MustMarshalBinaryBare(auth.BaseAccount{})}},
-		{mint.StoreKey, cmn.KVPair{Key: mint.MinterKey, Value: cdc.MustMarshalBinaryLengthPrefixed(mint.Minter{})}},
+		// {mint.StoreKey, cmn.KVPair{Key: mint.MinterKey, Value: cdc.MustMarshalBinaryLengthPrefixed(mint.Minter{})}},
 		{staking.StoreKey, cmn.KVPair{Key: staking.LastValidatorPowerKey, Value: valAddr1.Bytes()}},
 		{gov.StoreKey, cmn.KVPair{Key: gov.VoteKey(1, delAddr1), Value: cdc.MustMarshalBinaryLengthPrefixed(gov.Vote{})}},
 		{distribution.StoreKey, cmn.KVPair{Key: distr.ProposerKey, Value: consAddr1.Bytes()}},
@@ -100,33 +100,33 @@ func TestDecodeAccountStore(t *testing.T) {
 	}
 }
 
-func TestDecodeMintStore(t *testing.T) {
-	cdc := makeTestCodec()
-	minter := mint.NewMinter(sdk.OneDec(), sdk.NewDec(15))
+// func TestDecodeMintStore(t *testing.T) {
+// 	cdc := makeTestCodec()
+// 	minter := mint.NewMinter(sdk.OneDec(), sdk.NewDec(15))
 
-	kvPairs := cmn.KVPairs{
-		cmn.KVPair{Key: mint.MinterKey, Value: cdc.MustMarshalBinaryLengthPrefixed(minter)},
-		cmn.KVPair{Key: []byte{0x99}, Value: []byte{0x99}},
-	}
-	tests := []struct {
-		name        string
-		expectedLog string
-	}{
-		{"Minter", fmt.Sprintf("%v\n%v", minter, minter)},
-		{"other", ""},
-	}
+// 	kvPairs := cmn.KVPairs{
+// 		cmn.KVPair{Key: mint.MinterKey, Value: cdc.MustMarshalBinaryLengthPrefixed(minter)},
+// 		cmn.KVPair{Key: []byte{0x99}, Value: []byte{0x99}},
+// 	}
+// 	tests := []struct {
+// 		name        string
+// 		expectedLog string
+// 	}{
+// 		{"Minter", fmt.Sprintf("%v\n%v", minter, minter)},
+// 		{"other", ""},
+// 	}
 
-	for i, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			switch i {
-			case len(tests) - 1:
-				require.Panics(t, func() { DecodeMintStore(cdc, cdc, kvPairs[i], kvPairs[i]) }, tt.name)
-			default:
-				require.Equal(t, tt.expectedLog, DecodeMintStore(cdc, cdc, kvPairs[i], kvPairs[i]), tt.name)
-			}
-		})
-	}
-}
+// 	for i, tt := range tests {
+// 		t.Run(tt.name, func(t *testing.T) {
+// 			switch i {
+// 			case len(tests) - 1:
+// 				require.Panics(t, func() { DecodeMintStore(cdc, cdc, kvPairs[i], kvPairs[i]) }, tt.name)
+// 			default:
+// 				require.Equal(t, tt.expectedLog, DecodeMintStore(cdc, cdc, kvPairs[i], kvPairs[i]), tt.name)
+// 			}
+// 		})
+// 	}
+// }
 
 func TestDecodeDistributionStore(t *testing.T) {
 	cdc := makeTestCodec()

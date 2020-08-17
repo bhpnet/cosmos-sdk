@@ -8,7 +8,7 @@ import (
 )
 
 const (
-	defaultMinGasPrices = ""
+	defaultMinGasPrices = "2.5abhp"
 )
 
 // BaseConfig defines the server's basic configuration

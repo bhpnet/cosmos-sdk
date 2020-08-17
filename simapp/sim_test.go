@@ -26,7 +26,7 @@ import (
 	distrsim "github.com/cosmos/cosmos-sdk/x/distribution/simulation"
 	"github.com/cosmos/cosmos-sdk/x/gov"
 	govsim "github.com/cosmos/cosmos-sdk/x/gov/simulation"
-	"github.com/cosmos/cosmos-sdk/x/mint"
+	// "github.com/cosmos/cosmos-sdk/x/mint"
 	"github.com/cosmos/cosmos-sdk/x/params"
 	paramsim "github.com/cosmos/cosmos-sdk/x/params/simulation"
 	"github.com/cosmos/cosmos-sdk/x/simulation"
@@ -156,7 +156,7 @@ func appStateRandomizedFn(
 	GenBankGenesisState(cdc, r, appParams, genesisState)
 	GenSupplyGenesisState(cdc, amount, numInitiallyBonded, int64(len(accs)), genesisState)
 	GenGovGenesisState(cdc, r, appParams, genesisState)
-	GenMintGenesisState(cdc, r, appParams, genesisState)
+	// GenMintGenesisState(cdc, r, appParams, genesisState)
 	GenDistrGenesisState(cdc, r, appParams, genesisState)
 	stakingGen := GenStakingGenesisState(cdc, r, accs, amount, numAccs, numInitiallyBonded, appParams, genesisState)
 	GenSlashingGenesisState(cdc, r, stakingGen, appParams, genesisState)
@@ -595,7 +595,7 @@ func TestAppImportExport(t *testing.T) {
 				staking.UnbondingQueueKey, staking.RedelegationQueueKey, staking.ValidatorQueueKey,
 			}}, // ordering may change but it doesn't matter
 		{app.keys[slashing.StoreKey], newApp.keys[slashing.StoreKey], [][]byte{}},
-		{app.keys[mint.StoreKey], newApp.keys[mint.StoreKey], [][]byte{}},
+		// {app.keys[mint.StoreKey], newApp.keys[mint.StoreKey], [][]byte{}},
 		{app.keys[distr.StoreKey], newApp.keys[distr.StoreKey], [][]byte{}},
 		{app.keys[supply.StoreKey], newApp.keys[supply.StoreKey], [][]byte{}},
 		{app.keys[params.StoreKey], newApp.keys[params.StoreKey], [][]byte{}},

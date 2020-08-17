@@ -26,7 +26,6 @@ import (
 	"github.com/cosmos/cosmos-sdk/x/distribution"
 	"github.com/cosmos/cosmos-sdk/x/genaccounts"
 	"github.com/cosmos/cosmos-sdk/x/gov"
-	"github.com/cosmos/cosmos-sdk/x/mint"
 	"github.com/cosmos/cosmos-sdk/x/simulation"
 	"github.com/cosmos/cosmos-sdk/x/slashing"
 	"github.com/cosmos/cosmos-sdk/x/staking"
@@ -292,59 +291,59 @@ func GenGovGenesisState(cdc *codec.Codec, r *rand.Rand, ap simulation.AppParams,
 }
 
 // GenMintGenesisState generates a random GenesisState for mint
-func GenMintGenesisState(cdc *codec.Codec, r *rand.Rand, ap simulation.AppParams, genesisState map[string]json.RawMessage) {
-	mintGenesis := mint.NewGenesisState(
-		mint.InitialMinter(
-			func(r *rand.Rand) sdk.Dec {
-				var v sdk.Dec
-				ap.GetOrGenerate(cdc, simulation.Inflation, &v, r,
-					func(r *rand.Rand) {
-						v = simulation.ModuleParamSimulator[simulation.Inflation](r).(sdk.Dec)
-					})
-				return v
-			}(r),
-		),
-		mint.NewParams(
-			sdk.DefaultBondDenom,
-			func(r *rand.Rand) sdk.Dec {
-				var v sdk.Dec
-				ap.GetOrGenerate(cdc, simulation.InflationRateChange, &v, r,
-					func(r *rand.Rand) {
-						v = simulation.ModuleParamSimulator[simulation.InflationRateChange](r).(sdk.Dec)
-					})
-				return v
-			}(r),
-			func(r *rand.Rand) sdk.Dec {
-				var v sdk.Dec
-				ap.GetOrGenerate(cdc, simulation.InflationMax, &v, r,
-					func(r *rand.Rand) {
-						v = simulation.ModuleParamSimulator[simulation.InflationMax](r).(sdk.Dec)
-					})
-				return v
-			}(r),
-			func(r *rand.Rand) sdk.Dec {
-				var v sdk.Dec
-				ap.GetOrGenerate(cdc, simulation.InflationMin, &v, r,
-					func(r *rand.Rand) {
-						v = simulation.ModuleParamSimulator[simulation.InflationMin](r).(sdk.Dec)
-					})
-				return v
-			}(r),
-			func(r *rand.Rand) sdk.Dec {
-				var v sdk.Dec
-				ap.GetOrGenerate(cdc, simulation.GoalBonded, &v, r,
-					func(r *rand.Rand) {
-						v = simulation.ModuleParamSimulator[simulation.GoalBonded](r).(sdk.Dec)
-					})
-				return v
-			}(r),
-			uint64(60*60*8766/5),
-		),
-	)
+// func GenMintGenesisState(cdc *codec.Codec, r *rand.Rand, ap simulation.AppParams, genesisState map[string]json.RawMessage) {
+// 	mintGenesis := mint.NewGenesisState(
+// 		mint.InitialMinter(
+// 			func(r *rand.Rand) sdk.Dec {
+// 				var v sdk.Dec
+// 				ap.GetOrGenerate(cdc, simulation.Inflation, &v, r,
+// 					func(r *rand.Rand) {
+// 						v = simulation.ModuleParamSimulator[simulation.Inflation](r).(sdk.Dec)
+// 					})
+// 				return v
+// 			}(r),
+// 		),
+// 		mint.NewParams(
+// 			sdk.DefaultBondDenom,
+// 			func(r *rand.Rand) sdk.Dec {
+// 				var v sdk.Dec
+// 				ap.GetOrGenerate(cdc, simulation.InflationRateChange, &v, r,
+// 					func(r *rand.Rand) {
+// 						v = simulation.ModuleParamSimulator[simulation.InflationRateChange](r).(sdk.Dec)
+// 					})
+// 				return v
+// 			}(r),
+// 			func(r *rand.Rand) sdk.Dec {
+// 				var v sdk.Dec
+// 				ap.GetOrGenerate(cdc, simulation.InflationMax, &v, r,
+// 					func(r *rand.Rand) {
+// 						v = simulation.ModuleParamSimulator[simulation.InflationMax](r).(sdk.Dec)
+// 					})
+// 				return v
+// 			}(r),
+// 			func(r *rand.Rand) sdk.Dec {
+// 				var v sdk.Dec
+// 				ap.GetOrGenerate(cdc, simulation.InflationMin, &v, r,
+// 					func(r *rand.Rand) {
+// 						v = simulation.ModuleParamSimulator[simulation.InflationMin](r).(sdk.Dec)
+// 					})
+// 				return v
+// 			}(r),
+// 			func(r *rand.Rand) sdk.Dec {
+// 				var v sdk.Dec
+// 				ap.GetOrGenerate(cdc, simulation.GoalBonded, &v, r,
+// 					func(r *rand.Rand) {
+// 						v = simulation.ModuleParamSimulator[simulation.GoalBonded](r).(sdk.Dec)
+// 					})
+// 				return v
+// 			}(r),
+// 			uint64(60*60*8766/5),
+// 		),
+// 	)
 
-	fmt.Printf("Selected randomly generated minting parameters:\n%s\n", codec.MustMarshalJSONIndent(cdc, mintGenesis.Params))
-	genesisState[mint.ModuleName] = cdc.MustMarshalJSON(mintGenesis)
-}
+// 	fmt.Printf("Selected randomly generated minting parameters:\n%s\n", codec.MustMarshalJSONIndent(cdc, mintGenesis.Params))
+// 	genesisState[mint.ModuleName] = cdc.MustMarshalJSON(mintGenesis)
+// }
 
 // GenDistrGenesisState generates a random GenesisState for distribution
 func GenDistrGenesisState(cdc *codec.Codec, r *rand.Rand, ap simulation.AppParams, genesisState map[string]json.RawMessage) {
@@ -507,8 +506,8 @@ func GetSimulationLog(storeName string, cdcA, cdcB *codec.Codec, kvA, kvB cmn.KV
 	switch storeName {
 	case auth.StoreKey:
 		return DecodeAccountStore(cdcA, cdcB, kvA, kvB)
-	case mint.StoreKey:
-		return DecodeMintStore(cdcA, cdcB, kvA, kvB)
+	// case mint.StoreKey:
+	// 	return DecodeMintStore(cdcA, cdcB, kvA, kvB)
 	case staking.StoreKey:
 		return DecodeStakingStore(cdcA, cdcB, kvA, kvB)
 	case slashing.StoreKey:
@@ -543,17 +542,17 @@ func DecodeAccountStore(cdcA, cdcB *codec.Codec, kvA, kvB cmn.KVPair) string {
 }
 
 // DecodeMintStore unmarshals the KVPair's Value to the corresponding mint type
-func DecodeMintStore(cdcA, cdcB *codec.Codec, kvA, kvB cmn.KVPair) string {
-	switch {
-	case bytes.Equal(kvA.Key, mint.MinterKey):
-		var minterA, minterB mint.Minter
-		cdcA.MustUnmarshalBinaryLengthPrefixed(kvA.Value, &minterA)
-		cdcB.MustUnmarshalBinaryLengthPrefixed(kvB.Value, &minterB)
-		return fmt.Sprintf("%v\n%v", minterA, minterB)
-	default:
-		panic(fmt.Sprintf("invalid mint key %X", kvA.Key))
-	}
-}
+// func DecodeMintStore(cdcA, cdcB *codec.Codec, kvA, kvB cmn.KVPair) string {
+// 	switch {
+// 	case bytes.Equal(kvA.Key, mint.MinterKey):
+// 		var minterA, minterB mint.Minter
+// 		cdcA.MustUnmarshalBinaryLengthPrefixed(kvA.Value, &minterA)
+// 		cdcB.MustUnmarshalBinaryLengthPrefixed(kvB.Value, &minterB)
+// 		return fmt.Sprintf("%v\n%v", minterA, minterB)
+// 	default:
+// 		panic(fmt.Sprintf("invalid mint key %X", kvA.Key))
+// 	}
+// }
 
 // DecodeDistributionStore unmarshals the KVPair's Value to the corresponding distribution type
 func DecodeDistributionStore(cdcA, cdcB *codec.Codec, kvA, kvB cmn.KVPair) string {

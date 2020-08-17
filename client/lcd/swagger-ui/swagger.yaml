@@ -2,7 +2,7 @@
 swagger: "2.0"
 info:
   version: "3.0"
-  title: Gaia-Lite for Cosmos
+  title: BHP REST for BHP Network https://www.bhpa.io/
   description: A REST interface for state queries, transaction generation and broadcasting.
 tags:
   - name: Transactions
@@ -30,7 +30,7 @@ tags:
     description: Query app version
 schemes:
   - https
-host: stargate.cosmos.network
+host: api.001001.xyz
 securityDefinitions:
   kms:
     type: basic
