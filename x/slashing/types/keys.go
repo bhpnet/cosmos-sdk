@@ -7,7 +7,7 @@ import (
 )
 
 const (
-	// module name
+	// ModuleName is the name of the module
 	ModuleName = "slashing"
 
 	// StoreKey is the store key string for slashing
@@ -20,13 +20,6 @@ const (
 	QuerierRoute = ModuleName
 )
 
-// Query endpoints supported by the slashing querier
-const (
-	QueryParameters   = "parameters"
-	QuerySigningInfo  = "signingInfo"
-	QuerySigningInfos = "signingInfos"
-)
-
 // Keys for slashing store
 // Items are stored with the following key: values
 //
@@ -36,18 +29,18 @@ const (
 //
 // - 0x03<accAddr_Bytes>: crypto.PubKey
 var (
-	ValidatorSigningInfoKey         = []byte{0x01} // Prefix for signing info
-	ValidatorMissedBlockBitArrayKey = []byte{0x02} // Prefix for missed block bit array
-	AddrPubkeyRelationKey           = []byte{0x03} // Prefix for address-pubkey relation
+	ValidatorSigningInfoKeyPrefix         = []byte{0x01} // Prefix for signing info
+	ValidatorMissedBlockBitArrayKeyPrefix = []byte{0x02} // Prefix for missed block bit array
+	AddrPubkeyRelationKeyPrefix           = []byte{0x03} // Prefix for address-pubkey relation
 )
 
-// stored by *Consensus* address (not operator address)
-func GetValidatorSigningInfoKey(v sdk.ConsAddress) []byte {
-	return append(ValidatorSigningInfoKey, v.Bytes()...)
+// ValidatorSigningInfoKey - stored by *Consensus* address (not operator address)
+func ValidatorSigningInfoKey(v sdk.ConsAddress) []byte {
+	return append(ValidatorSigningInfoKeyPrefix, v.Bytes()...)
 }
 
-// extract the address from a validator signing info key
-func GetValidatorSigningInfoAddress(key []byte) (v sdk.ConsAddress) {
+// ValidatorSigningInfoAddress - extract the address from a validator signing info key
+func ValidatorSigningInfoAddress(key []byte) (v sdk.ConsAddress) {
 	addr := key[1:]
 	if len(addr) != sdk.AddrLen {
 		panic("unexpected key length")
@@ -55,19 +48,19 @@ func GetValidatorSigningInfoAddress(key []byte) (v sdk.ConsAddress) {
 	return sdk.ConsAddress(addr)
 }
 
-// stored by *Consensus* address (not operator address)
-func GetValidatorMissedBlockBitArrayPrefixKey(v sdk.ConsAddress) []byte {
-	return append(ValidatorMissedBlockBitArrayKey, v.Bytes()...)
+// ValidatorMissedBlockBitArrayPrefixKey - stored by *Consensus* address (not operator address)
+func ValidatorMissedBlockBitArrayPrefixKey(v sdk.ConsAddress) []byte {
+	return append(ValidatorMissedBlockBitArrayKeyPrefix, v.Bytes()...)
 }
 
-// stored by *Consensus* address (not operator address)
-func GetValidatorMissedBlockBitArrayKey(v sdk.ConsAddress, i int64) []byte {
+// ValidatorMissedBlockBitArrayKey - stored by *Consensus* address (not operator address)
+func ValidatorMissedBlockBitArrayKey(v sdk.ConsAddress, i int64) []byte {
 	b := make([]byte, 8)
 	binary.LittleEndian.PutUint64(b, uint64(i))
-	return append(GetValidatorMissedBlockBitArrayPrefixKey(v), b...)
+	return append(ValidatorMissedBlockBitArrayPrefixKey(v), b...)
 }
 
-// get pubkey relation key used to get the pubkey from the address
-func GetAddrPubkeyRelationKey(address []byte) []byte {
-	return append(AddrPubkeyRelationKey, address...)
+// AddrPubkeyRelationKey gets pubkey relation key used to get the pubkey from the address
+func AddrPubkeyRelationKey(address []byte) []byte {
+	return append(AddrPubkeyRelationKeyPrefix, address...)
 }

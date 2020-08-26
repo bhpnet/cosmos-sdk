@@ -5,41 +5,41 @@ import (
 
 	"github.com/spf13/cobra"
 
+	"github.com/cosmos/cosmos-sdk/client/flags"
 	"github.com/cosmos/cosmos-sdk/client/input"
+	"github.com/cosmos/cosmos-sdk/crypto/keyring"
+	sdk "github.com/cosmos/cosmos-sdk/types"
 )
 
-func exportKeyCommand() *cobra.Command {
-	cmd := &cobra.Command{
+// ExportKeyCommand exports private keys from the key store.
+func ExportKeyCommand() *cobra.Command {
+	return &cobra.Command{
 		Use:   "export <name>",
 		Short: "Export private keys",
 		Long:  `Export a private key from the local keybase in ASCII-armored encrypted format.`,
 		Args:  cobra.ExactArgs(1),
-		RunE:  runExportCmd,
-	}
-	return cmd
-}
+		RunE: func(cmd *cobra.Command, args []string) error {
+			buf := bufio.NewReader(cmd.InOrStdin())
 
-func runExportCmd(cmd *cobra.Command, args []string) error {
-	kb, err := NewKeyBaseFromHomeFlag()
-	if err != nil {
-		return err
-	}
+			backend, _ := cmd.Flags().GetString(flags.FlagKeyringBackend)
+			homeDir, _ := cmd.Flags().GetString(flags.FlagHome)
+			kb, err := keyring.New(sdk.KeyringServiceName(), backend, homeDir, buf)
+			if err != nil {
+				return err
+			}
 
-	buf := bufio.NewReader(cmd.InOrStdin())
-	decryptPassword, err := input.GetPassword("Enter passphrase to decrypt your key:", buf)
-	if err != nil {
-		return err
-	}
-	encryptPassword, err := input.GetPassword("Enter passphrase to encrypt the exported key:", buf)
-	if err != nil {
-		return err
-	}
+			encryptPassword, err := input.GetPassword("Enter passphrase to encrypt the exported key:", buf)
+			if err != nil {
+				return err
+			}
 
-	armored, err := kb.ExportPrivKey(args[0], decryptPassword, encryptPassword)
-	if err != nil {
-		return err
-	}
+			armored, err := kb.ExportPrivKeyArmor(args[0], encryptPassword)
+			if err != nil {
+				return err
+			}
 
-	cmd.Println(armored)
-	return nil
+			cmd.Println(armored)
+			return nil
+		},
+	}
 }

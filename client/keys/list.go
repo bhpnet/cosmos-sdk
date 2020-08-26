@@ -1,11 +1,18 @@
 package keys
 
 import (
-	"github.com/cosmos/cosmos-sdk/client/flags"
 	"github.com/spf13/cobra"
+	"github.com/tendermint/tendermint/libs/cli"
+
+	"github.com/cosmos/cosmos-sdk/client/flags"
+	"github.com/cosmos/cosmos-sdk/crypto/keyring"
+	sdk "github.com/cosmos/cosmos-sdk/types"
 )
 
-func listKeysCmd() *cobra.Command {
+const flagListNames = "list-names"
+
+// ListKeysCmd lists all keys in the key store.
+func ListKeysCmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "list",
 		Short: "List all keys",
@@ -13,19 +20,35 @@ func listKeysCmd() *cobra.Command {
 along with their associated name and address.`,
 		RunE: runListCmd,
 	}
-	cmd.Flags().Bool(flags.FlagIndentResponse, false, "Add indent to JSON response")
+
+	cmd.Flags().BoolP(flagListNames, "n", false, "List names only")
 	return cmd
 }
 
-func runListCmd(cmd *cobra.Command, args []string) error {
-	kb, err := NewKeyBaseFromHomeFlag()
+func runListCmd(cmd *cobra.Command, _ []string) error {
+	backend, _ := cmd.Flags().GetString(flags.FlagKeyringBackend)
+	homeDir, _ := cmd.Flags().GetString(flags.FlagHome)
+	kb, err := keyring.New(sdk.KeyringServiceName(), backend, homeDir, cmd.InOrStdin())
 	if err != nil {
 		return err
 	}
 
 	infos, err := kb.List()
-	if err == nil {
-		printInfos(infos)
+	if err != nil {
+		return err
 	}
-	return err
+
+	cmd.SetOut(cmd.OutOrStdout())
+
+	if ok, _ := cmd.Flags().GetBool(flagListNames); !ok {
+		output, _ := cmd.Flags().GetString(cli.OutputFlag)
+		printInfos(cmd.OutOrStdout(), infos, output)
+		return nil
+	}
+
+	for _, info := range infos {
+		cmd.Println(info.GetName())
+	}
+
+	return nil
 }

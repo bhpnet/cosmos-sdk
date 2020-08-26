@@ -1,52 +1,74 @@
 package keys
 
 import (
+	"fmt"
 	"testing"
 
 	"github.com/spf13/cobra"
-	"github.com/spf13/viper"
-	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 
 	"github.com/cosmos/cosmos-sdk/client/flags"
-	"github.com/cosmos/cosmos-sdk/tests"
+	"github.com/cosmos/cosmos-sdk/crypto/hd"
+	"github.com/cosmos/cosmos-sdk/crypto/keyring"
+	"github.com/cosmos/cosmos-sdk/testutil"
+	sdk "github.com/cosmos/cosmos-sdk/types"
 )
 
 func Test_runListCmd(t *testing.T) {
+	cmd := ListKeysCmd()
+	cmd.Flags().AddFlagSet(Commands("home").PersistentFlags())
+
+	kbHome1, cleanUp1 := testutil.NewTestCaseDir(t)
+	t.Cleanup(cleanUp1)
+
+	kbHome2, cleanUp2 := testutil.NewTestCaseDir(t)
+	t.Cleanup(cleanUp2)
+
+	mockIn := testutil.ApplyMockIODiscardOutErr(cmd)
+	kb, err := keyring.New(sdk.KeyringServiceName(), keyring.BackendTest, kbHome2, mockIn)
+	require.NoError(t, err)
+
+	path := "" //sdk.GetConfig().GetFullFundraiserPath()
+	_, err = kb.NewAccount("something", testutil.TestMnemonic, "", path, hd.Secp256k1)
+	require.NoError(t, err)
+
+	t.Cleanup(func() {
+		kb.Delete("something") // nolint:errcheck
+	})
+
 	type args struct {
 		cmd  *cobra.Command
 		args []string
 	}
 
-	cmdBasic := listKeysCmd()
-
-	// Prepare some keybases
-	kbHome1, cleanUp1 := tests.NewTestCaseDir(t)
-	defer cleanUp1()
-	// Do nothing, leave home1 empty
-
-	kbHome2, cleanUp2 := tests.NewTestCaseDir(t)
-	defer cleanUp2()
-	viper.Set(flags.FlagHome, kbHome2)
-
-	kb, err := NewKeyBaseFromHomeFlag()
-	assert.NoError(t, err)
-	_, err = kb.CreateAccount("something", tests.TestMnemonic, "", "", 0, 0)
-	assert.NoError(t, err)
-
 	testData := []struct {
 		name    string
 		kbDir   string
-		args    args
 		wantErr bool
 	}{
-		{"invalid keybase", "/dev/null", args{cmdBasic, []string{}}, true},
-		{"keybase: empty", kbHome1, args{cmdBasic, []string{}}, false},
-		{"keybase: w/key", kbHome2, args{cmdBasic, []string{}}, false},
+		{"keybase: empty", kbHome1, false},
+		{"keybase: w/key", kbHome2, false},
 	}
 	for _, tt := range testData {
+		tt := tt
 		t.Run(tt.name, func(t *testing.T) {
-			viper.Set(flags.FlagHome, tt.kbDir)
-			if err := runListCmd(tt.args.cmd, tt.args.args); (err != nil) != tt.wantErr {
+			cmd.SetArgs([]string{
+				fmt.Sprintf("--%s=%s", flags.FlagHome, tt.kbDir),
+				fmt.Sprintf("--%s=false", flagListNames),
+				fmt.Sprintf("--%s=%s", flags.FlagKeyringBackend, keyring.BackendTest),
+			})
+
+			if err := cmd.Execute(); (err != nil) != tt.wantErr {
+				t.Errorf("runListCmd() error = %v, wantErr %v", err, tt.wantErr)
+			}
+
+			cmd.SetArgs([]string{
+				fmt.Sprintf("--%s=%s", flags.FlagHome, tt.kbDir),
+				fmt.Sprintf("--%s=true", flagListNames),
+				fmt.Sprintf("--%s=%s", flags.FlagKeyringBackend, keyring.BackendTest),
+			})
+
+			if err := cmd.Execute(); (err != nil) != tt.wantErr {
 				t.Errorf("runListCmd() error = %v, wantErr %v", err, tt.wantErr)
 			}
 		})

@@ -4,16 +4,21 @@ import (
 	"strings"
 	"testing"
 
-	sdk "github.com/cosmos/cosmos-sdk/types"
-	abci "github.com/tendermint/tendermint/abci/types"
-
 	"github.com/stretchr/testify/require"
+	tmproto "github.com/tendermint/tendermint/proto/tendermint/types"
+
+	"github.com/cosmos/cosmos-sdk/testutil/testdata"
+	sdk "github.com/cosmos/cosmos-sdk/types"
+	sdkerrors "github.com/cosmos/cosmos-sdk/types/errors"
 )
 
 func TestInvalidMsg(t *testing.T) {
 	h := NewHandler(nil)
 
-	res := h(sdk.NewContext(nil, abci.Header{}, false, nil), sdk.NewTestMsg())
-	require.False(t, res.IsOK())
-	require.True(t, strings.Contains(res.Log, "unrecognized bank message type"))
+	res, err := h(sdk.NewContext(nil, tmproto.Header{}, false, nil), testdata.NewTestMsg())
+	require.Error(t, err)
+	require.Nil(t, res)
+
+	_, _, log := sdkerrors.ABCIInfo(err, false)
+	require.True(t, strings.Contains(log, "unrecognized bank message type"))
 }

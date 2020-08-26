@@ -3,6 +3,7 @@ Package module contains application module patterns and associated "manager" fun
 The module pattern has been broken down by:
  - independent module functionality (AppModuleBasic)
  - inter-dependent module genesis functionality (AppModuleGenesis)
+ - inter-dependent module simulation functionality (AppModuleSimulation)
  - inter-dependent module full functionality (AppModule)
 
 inter-dependent module functionality is module functionality which somehow
@@ -30,35 +31,41 @@ package module
 import (
 	"encoding/json"
 
+	"github.com/gogo/protobuf/grpc"
+	"github.com/grpc-ecosystem/grpc-gateway/runtime"
+
 	"github.com/gorilla/mux"
 	"github.com/spf13/cobra"
-
 	abci "github.com/tendermint/tendermint/abci/types"
 
-	"github.com/cosmos/cosmos-sdk/client/context"
+	"github.com/cosmos/cosmos-sdk/client"
 	"github.com/cosmos/cosmos-sdk/codec"
+	codectypes "github.com/cosmos/cosmos-sdk/codec/types"
 	sdk "github.com/cosmos/cosmos-sdk/types"
 )
 
 //__________________________________________________________________________________________
+
 // AppModuleBasic is the standard form for basic non-dependant elements of an application module.
 type AppModuleBasic interface {
 	Name() string
-	RegisterCodec(*codec.Codec)
+	RegisterCodec(*codec.LegacyAmino)
+	RegisterInterfaces(codectypes.InterfaceRegistry)
 
-	// genesis
-	DefaultGenesis() json.RawMessage
-	ValidateGenesis(json.RawMessage) error
+	DefaultGenesis(codec.JSONMarshaler) json.RawMessage
+	ValidateGenesis(codec.JSONMarshaler, client.TxEncodingConfig, json.RawMessage) error
 
 	// client functionality
-	RegisterRESTRoutes(context.CLIContext, *mux.Router)
-	GetTxCmd(*codec.Codec) *cobra.Command
-	GetQueryCmd(*codec.Codec) *cobra.Command
+	RegisterRESTRoutes(client.Context, *mux.Router)
+	RegisterGRPCRoutes(client.Context, *runtime.ServeMux)
+	GetTxCmd() *cobra.Command
+	GetQueryCmd() *cobra.Command
 }
 
-// collections of AppModuleBasic
+// BasicManager is a collection of AppModuleBasic
 type BasicManager map[string]AppModuleBasic
 
+// NewBasicManager creates a new BasicManager object
 func NewBasicManager(modules ...AppModuleBasic) BasicManager {
 	moduleMap := make(map[string]AppModuleBasic)
 	for _, module := range modules {
@@ -67,63 +74,87 @@ func NewBasicManager(modules ...AppModuleBasic) BasicManager {
 	return moduleMap
 }
 
-// RegisterCodecs registers all module codecs
-func (bm BasicManager) RegisterCodec(cdc *codec.Codec) {
+// RegisterCodec registers all module codecs
+func (bm BasicManager) RegisterCodec(cdc *codec.LegacyAmino) {
 	for _, b := range bm {
 		b.RegisterCodec(cdc)
 	}
 }
 
-// Provided default genesis information for all modules
-func (bm BasicManager) DefaultGenesis() map[string]json.RawMessage {
+// RegisterInterfaces registers all module interface types
+func (bm BasicManager) RegisterInterfaces(registry codectypes.InterfaceRegistry) {
+	for _, m := range bm {
+		m.RegisterInterfaces(registry)
+	}
+}
+
+// DefaultGenesis provides default genesis information for all modules
+func (bm BasicManager) DefaultGenesis(cdc codec.JSONMarshaler) map[string]json.RawMessage {
 	genesis := make(map[string]json.RawMessage)
 	for _, b := range bm {
-		genesis[b.Name()] = b.DefaultGenesis()
+		genesis[b.Name()] = b.DefaultGenesis(cdc)
 	}
+
 	return genesis
 }
 
-// Provided default genesis information for all modules
-func (bm BasicManager) ValidateGenesis(genesis map[string]json.RawMessage) error {
+// ValidateGenesis performs genesis state validation for all modules
+func (bm BasicManager) ValidateGenesis(cdc codec.JSONMarshaler, txEncCfg client.TxEncodingConfig, genesis map[string]json.RawMessage) error {
 	for _, b := range bm {
-		if err := b.ValidateGenesis(genesis[b.Name()]); err != nil {
+		if err := b.ValidateGenesis(cdc, txEncCfg, genesis[b.Name()]); err != nil {
 			return err
 		}
 	}
+
 	return nil
 }
 
-// RegisterRestRoutes registers all module rest routes
-func (bm BasicManager) RegisterRESTRoutes(ctx context.CLIContext, rtr *mux.Router) {
+// RegisterRESTRoutes registers all module rest routes
+func (bm BasicManager) RegisterRESTRoutes(clientCtx client.Context, rtr *mux.Router) {
 	for _, b := range bm {
-		b.RegisterRESTRoutes(ctx, rtr)
+		b.RegisterRESTRoutes(clientCtx, rtr)
 	}
 }
 
-// add all tx commands to the rootTxCmd
-func (bm BasicManager) AddTxCommands(rootTxCmd *cobra.Command, cdc *codec.Codec) {
+// RegisterGRPCRoutes registers all module rest routes
+func (bm BasicManager) RegisterGRPCRoutes(clientCtx client.Context, rtr *runtime.ServeMux) {
 	for _, b := range bm {
-		if cmd := b.GetTxCmd(cdc); cmd != nil {
+		b.RegisterGRPCRoutes(clientCtx, rtr)
+	}
+}
+
+// AddTxCommands adds all tx commands to the rootTxCmd.
+//
+// TODO: Remove clientCtx argument.
+// REF: https://github.com/cosmos/cosmos-sdk/issues/6571
+func (bm BasicManager) AddTxCommands(rootTxCmd *cobra.Command) {
+	for _, b := range bm {
+		if cmd := b.GetTxCmd(); cmd != nil {
 			rootTxCmd.AddCommand(cmd)
 		}
 	}
 }
 
-// add all query commands to the rootQueryCmd
-func (bm BasicManager) AddQueryCommands(rootQueryCmd *cobra.Command, cdc *codec.Codec) {
+// AddQueryCommands adds all query commands to the rootQueryCmd.
+//
+// TODO: Remove clientCtx argument.
+// REF: https://github.com/cosmos/cosmos-sdk/issues/6571
+func (bm BasicManager) AddQueryCommands(rootQueryCmd *cobra.Command) {
 	for _, b := range bm {
-		if cmd := b.GetQueryCmd(cdc); cmd != nil {
+		if cmd := b.GetQueryCmd(); cmd != nil {
 			rootQueryCmd.AddCommand(cmd)
 		}
 	}
 }
 
 //_________________________________________________________
+
 // AppModuleGenesis is the standard form for an application module genesis functions
 type AppModuleGenesis interface {
 	AppModuleBasic
-	InitGenesis(sdk.Context, json.RawMessage) []abci.ValidatorUpdate
-	ExportGenesis(sdk.Context) json.RawMessage
+
+	InitGenesis(sdk.Context, codec.JSONMarshaler, json.RawMessage) []abci.ValidatorUpdate
+	ExportGenesis(sdk.Context, codec.JSONMarshaler) json.RawMessage
 }
 
 // AppModule is the standard form for an application module
@@ -134,17 +165,22 @@ type AppModule interface {
 	RegisterInvariants(sdk.InvariantRegistry)
 
 	// routes
-	Route() string
-	NewHandler() sdk.Handler
+	Route() sdk.Route
+	// Deprecated: use RegisterQueryService
 	QuerierRoute() string
-	NewQuerierHandler() sdk.Querier
+	// Deprecated: use RegisterQueryService
+	LegacyQuerierHandler(codec.JSONMarshaler) sdk.Querier
+	// RegisterQueryService allows a module to register a gRPC query service
+	RegisterQueryService(grpc.Server)
 
+	// ABCI
 	BeginBlock(sdk.Context, abci.RequestBeginBlock)
 	EndBlock(sdk.Context, abci.RequestEndBlock) []abci.ValidatorUpdate
 }
 
 //___________________________
-// app module
+
+// GenesisOnlyAppModule is an AppModule that only has import/export functionality
 type GenesisOnlyAppModule struct {
 	AppModuleGenesis
 }
@@ -156,31 +192,32 @@ func NewGenesisOnlyAppModule(amg AppModuleGenesis) AppModule {
 	}
 }
 
-// register invariants
+// RegisterInvariants is a placeholder function register no invariants
 func (GenesisOnlyAppModule) RegisterInvariants(_ sdk.InvariantRegistry) {}
 
-// module message route ngame
-func (GenesisOnlyAppModule) Route() string { return "" }
+// Route empty module message route
+func (GenesisOnlyAppModule) Route() sdk.Route { return sdk.Route{} }
 
-// module handler
-func (GenesisOnlyAppModule) NewHandler() sdk.Handler { return nil }
-
-// module querier route ngame
+// QuerierRoute returns an empty module querier route
 func (GenesisOnlyAppModule) QuerierRoute() string { return "" }
 
-// module querier
-func (gam GenesisOnlyAppModule) NewQuerierHandler() sdk.Querier { return nil }
+// LegacyQuerierHandler returns an empty module querier
+func (gam GenesisOnlyAppModule) LegacyQuerierHandler(codec.JSONMarshaler) sdk.Querier { return nil }
 
-// module begin-block
+// RegisterQueryService registers all gRPC query services.
+func (gam GenesisOnlyAppModule) RegisterQueryService(grpc.Server) {}
+
+// BeginBlock returns an empty module begin-block
 func (gam GenesisOnlyAppModule) BeginBlock(ctx sdk.Context, req abci.RequestBeginBlock) {}
 
-// module end-block
+// EndBlock returns an empty module end-block
 func (GenesisOnlyAppModule) EndBlock(_ sdk.Context, _ abci.RequestEndBlock) []abci.ValidatorUpdate {
 	return []abci.ValidatorUpdate{}
 }
 
 //____________________________________________________________________________
-// module manager provides the high level utility for managing and executing
+
+// Manager defines a module manager that provides the high level utility for managing and executing
 // operations for a group of modules
 type Manager struct {
 	Modules            map[string]AppModule
@@ -190,11 +227,11 @@ type Manager struct {
 	OrderEndBlockers   []string
 }
 
-// NewModuleManager creates a new Manager object
+// NewManager creates a new Manager object
 func NewManager(modules ...AppModule) *Manager {
 
 	moduleMap := make(map[string]AppModule)
-	var modulesStr []string
+	modulesStr := make([]string, 0, len(modules))
 	for _, module := range modules {
 		moduleMap[module.Name()] = module
 		modulesStr = append(modulesStr, module.Name())
@@ -209,53 +246,61 @@ func NewManager(modules ...AppModule) *Manager {
 	}
 }
 
-// set the order of init genesis calls
+// SetOrderInitGenesis sets the order of init genesis calls
 func (m *Manager) SetOrderInitGenesis(moduleNames ...string) {
 	m.OrderInitGenesis = moduleNames
 }
 
-// set the order of export genesis calls
+// SetOrderExportGenesis sets the order of export genesis calls
 func (m *Manager) SetOrderExportGenesis(moduleNames ...string) {
 	m.OrderExportGenesis = moduleNames
 }
 
-// set the order of set begin-blocker calls
+// SetOrderBeginBlockers sets the order of set begin-blocker calls
 func (m *Manager) SetOrderBeginBlockers(moduleNames ...string) {
 	m.OrderBeginBlockers = moduleNames
 }
 
-// set the order of set end-blocker calls
+// SetOrderEndBlockers sets the order of set end-blocker calls
 func (m *Manager) SetOrderEndBlockers(moduleNames ...string) {
 	m.OrderEndBlockers = moduleNames
 }
 
-// register all module routes and module querier routes
+// RegisterInvariants registers all module routes and module querier routes
 func (m *Manager) RegisterInvariants(ir sdk.InvariantRegistry) {
 	for _, module := range m.Modules {
 		module.RegisterInvariants(ir)
 	}
 }
 
-// register all module routes and module querier routes
-func (m *Manager) RegisterRoutes(router sdk.Router, queryRouter sdk.QueryRouter) {
+// RegisterRoutes registers all module routes and module querier routes
+func (m *Manager) RegisterRoutes(router sdk.Router, queryRouter sdk.QueryRouter, legacyQuerierCdc codec.JSONMarshaler) {
 	for _, module := range m.Modules {
-		if module.Route() != "" {
-			router.AddRoute(module.Route(), module.NewHandler())
+		if !module.Route().Empty() {
+			router.AddRoute(module.Route())
 		}
 		if module.QuerierRoute() != "" {
-			queryRouter.AddRoute(module.QuerierRoute(), module.NewQuerierHandler())
+			queryRouter.AddRoute(module.QuerierRoute(), module.LegacyQuerierHandler(legacyQuerierCdc))
 		}
 	}
 }
 
-// perform init genesis functionality for modules
-func (m *Manager) InitGenesis(ctx sdk.Context, genesisData map[string]json.RawMessage) abci.ResponseInitChain {
+// RegisterQueryServices registers all module query services
+func (m *Manager) RegisterQueryServices(grpcRouter grpc.Server) {
+	for _, module := range m.Modules {
+		module.RegisterQueryService(grpcRouter)
+	}
+}
+
+// InitGenesis performs init genesis functionality for modules
+func (m *Manager) InitGenesis(ctx sdk.Context, cdc codec.JSONMarshaler, genesisData map[string]json.RawMessage) abci.ResponseInitChain {
 	var validatorUpdates []abci.ValidatorUpdate
 	for _, moduleName := range m.OrderInitGenesis {
 		if genesisData[moduleName] == nil {
 			continue
 		}
-		moduleValUpdates := m.Modules[moduleName].InitGenesis(ctx, genesisData[moduleName])
+
+		moduleValUpdates := m.Modules[moduleName].InitGenesis(ctx, cdc, genesisData[moduleName])
 
 		// use these validator updates if provided, the module manager assumes
 		// only one module will update the validator set
@@ -266,17 +311,19 @@ func (m *Manager) InitGenesis(ctx sdk.Context, genesisData map[string]json.RawMe
 			validatorUpdates = moduleValUpdates
 		}
 	}
+
 	return abci.ResponseInitChain{
 		Validators: validatorUpdates,
 	}
 }
 
-// perform export genesis functionality for modules
-func (m *Manager) ExportGenesis(ctx sdk.Context) map[string]json.RawMessage {
+// ExportGenesis performs export genesis functionality for modules
+func (m *Manager) ExportGenesis(ctx sdk.Context, cdc codec.JSONMarshaler) map[string]json.RawMessage {
 	genesisData := make(map[string]json.RawMessage)
 	for _, moduleName := range m.OrderExportGenesis {
-		genesisData[moduleName] = m.Modules[moduleName].ExportGenesis(ctx)
+		genesisData[moduleName] = m.Modules[moduleName].ExportGenesis(ctx, cdc)
 	}
+
 	return genesisData
 }
 
@@ -321,5 +368,3 @@ func (m *Manager) EndBlock(ctx sdk.Context, req abci.RequestEndBlock) abci.Respo
 		Events:           ctx.EventManager().ABCIEvents(),
 	}
 }
-
-// DONTCOVER

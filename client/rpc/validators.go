@@ -1,7 +1,6 @@
 package rpc
 
 import (
-	"bytes"
 	"fmt"
 	"net/http"
 	"strconv"
@@ -9,13 +8,11 @@ import (
 
 	"github.com/gorilla/mux"
 	"github.com/spf13/cobra"
-	"github.com/spf13/viper"
 
 	tmtypes "github.com/tendermint/tendermint/types"
 
-	"github.com/cosmos/cosmos-sdk/client/context"
+	"github.com/cosmos/cosmos-sdk/client"
 	"github.com/cosmos/cosmos-sdk/client/flags"
-	"github.com/cosmos/cosmos-sdk/codec"
 	sdk "github.com/cosmos/cosmos-sdk/types"
 	"github.com/cosmos/cosmos-sdk/types/rest"
 )
@@ -23,12 +20,14 @@ import (
 // TODO these next two functions feel kinda hacky based on their placement
 
 //ValidatorCommand returns the validator set for a given height
-func ValidatorCommand(cdc *codec.Codec) *cobra.Command {
+func ValidatorCommand() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "tendermint-validator-set [height]",
 		Short: "Get the full tendermint validator set at given height",
 		Args:  cobra.MaximumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
+			clientCtx := client.GetClientContextFromCmd(cmd)
+
 			var height *int64
 
 			// optional height
@@ -43,23 +42,22 @@ func ValidatorCommand(cdc *codec.Codec) *cobra.Command {
 				}
 			}
 
-			cliCtx := context.NewCLIContext().WithCodec(cdc)
+			page, _ := cmd.Flags().GetInt(flags.FlagPage)
+			limit, _ := cmd.Flags().GetInt(flags.FlagLimit)
 
-			result, err := GetValidators(cliCtx, height)
+			result, err := GetValidators(clientCtx, height, &page, &limit)
 			if err != nil {
 				return err
 			}
 
-			return cliCtx.PrintOutput(result)
+			return clientCtx.PrintOutputLegacy(result)
 		},
 	}
 
 	cmd.Flags().StringP(flags.FlagNode, "n", "tcp://localhost:26657", "Node to connect to")
-	viper.BindPFlag(flags.FlagNode, cmd.Flags().Lookup(flags.FlagNode))
-	cmd.Flags().Bool(flags.FlagTrustNode, false, "Trust connected full node (don't verify proofs for responses)")
-	viper.BindPFlag(flags.FlagTrustNode, cmd.Flags().Lookup(flags.FlagTrustNode))
-	cmd.Flags().Bool(flags.FlagIndentResponse, false, "indent JSON response")
-	viper.BindPFlag(flags.FlagIndentResponse, cmd.Flags().Lookup(flags.FlagIndentResponse))
+	cmd.Flags().String(flags.FlagKeyringBackend, flags.DefaultKeyringBackend, "Select keyring's backend (os|file|kwallet|pass|test)")
+	cmd.Flags().Int(flags.FlagPage, 0, "Query a specific page of paginated results")
+	cmd.Flags().Int(flags.FlagLimit, 100, "Query number of results returned per page")
 
 	return cmd
 }
@@ -100,7 +98,7 @@ func (rvo ResultValidatorsOutput) String() string {
 }
 
 func bech32ValidatorOutput(validator *tmtypes.Validator) (ValidatorOutput, error) {
-	bechValPubkey, err := sdk.Bech32ifyConsPub(validator.PubKey)
+	bechValPubkey, err := sdk.Bech32ifyPubKey(sdk.Bech32PubKeyTypeConsPub, validator.PubKey)
 	if err != nil {
 		return ValidatorOutput{}, err
 	}
@@ -114,27 +112,16 @@ func bech32ValidatorOutput(validator *tmtypes.Validator) (ValidatorOutput, error
 }
 
 // GetValidators from client
-func GetValidators(cliCtx context.CLIContext, height *int64) (ResultValidatorsOutput, error) {
+func GetValidators(clientCtx client.Context, height *int64, page, limit *int) (ResultValidatorsOutput, error) {
 	// get the node
-	node, err := cliCtx.GetNode()
+	node, err := clientCtx.GetNode()
 	if err != nil {
 		return ResultValidatorsOutput{}, err
 	}
 
-	validatorsRes, err := node.Validators(height)
+	validatorsRes, err := node.Validators(height, page, limit)
 	if err != nil {
 		return ResultValidatorsOutput{}, err
-	}
-
-	if !cliCtx.TrustNode {
-		check, err := cliCtx.Verify(validatorsRes.BlockHeight)
-		if err != nil {
-			return ResultValidatorsOutput{}, err
-		}
-
-		if !bytes.Equal(check.ValidatorsHash, tmtypes.NewValidatorSet(validatorsRes.Validators).Hash()) {
-			return ResultValidatorsOutput{}, fmt.Errorf("received invalid validatorset")
-		}
 	}
 
 	outputValidatorsRes := ResultValidatorsOutput{
@@ -155,17 +142,22 @@ func GetValidators(cliCtx context.CLIContext, height *int64) (ResultValidatorsOu
 // REST
 
 // Validator Set at a height REST handler
-func ValidatorSetRequestHandlerFn(cliCtx context.CLIContext) http.HandlerFunc {
+func ValidatorSetRequestHandlerFn(clientCtx client.Context) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		vars := mux.Vars(r)
-
-		height, err := strconv.ParseInt(vars["height"], 10, 64)
+		_, page, limit, err := rest.ParseHTTPArgsWithLimit(r, 100)
 		if err != nil {
-			rest.WriteErrorResponse(w, http.StatusBadRequest, "failed to parse block height; assumed format is '/validatorsets/{height}'")
+			rest.WriteErrorResponse(w, http.StatusBadRequest, "failed to parse pagination parameters")
 			return
 		}
 
-		chainHeight, err := GetChainHeight(cliCtx)
+		vars := mux.Vars(r)
+		height, err := strconv.ParseInt(vars["height"], 10, 64)
+		if err != nil {
+			rest.WriteErrorResponse(w, http.StatusBadRequest, "failed to parse block height")
+			return
+		}
+
+		chainHeight, err := GetChainHeight(clientCtx)
 		if err != nil {
 			rest.WriteErrorResponse(w, http.StatusInternalServerError, "failed to parse chain height")
 			return
@@ -175,24 +167,28 @@ func ValidatorSetRequestHandlerFn(cliCtx context.CLIContext) http.HandlerFunc {
 			return
 		}
 
-		output, err := GetValidators(cliCtx, &height)
-		if err != nil {
-			rest.WriteErrorResponse(w, http.StatusInternalServerError, err.Error())
+		output, err := GetValidators(clientCtx, &height, &page, &limit)
+		if rest.CheckInternalServerError(w, err) {
 			return
 		}
-		rest.PostProcessResponse(w, cliCtx, output)
+		rest.PostProcessResponse(w, clientCtx, output)
 	}
 }
 
 // Latest Validator Set REST handler
-func LatestValidatorSetRequestHandlerFn(cliCtx context.CLIContext) http.HandlerFunc {
+func LatestValidatorSetRequestHandlerFn(clientCtx client.Context) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		output, err := GetValidators(cliCtx, nil)
+		_, page, limit, err := rest.ParseHTTPArgsWithLimit(r, 100)
 		if err != nil {
-			rest.WriteErrorResponse(w, http.StatusInternalServerError, err.Error())
+			rest.WriteErrorResponse(w, http.StatusBadRequest, "failed to parse pagination parameters")
 			return
 		}
 
-		rest.PostProcessResponse(w, cliCtx, output)
+		output, err := GetValidators(clientCtx, nil, &page, &limit)
+		if rest.CheckInternalServerError(w, err) {
+			return
+		}
+
+		rest.PostProcessResponse(w, clientCtx, output)
 	}
 }

@@ -1,9 +1,10 @@
 package rest
 
 import (
+	"fmt"
 	"net/http"
 
-	"github.com/cosmos/cosmos-sdk/client/context"
+	"github.com/cosmos/cosmos-sdk/client"
 	sdk "github.com/cosmos/cosmos-sdk/types"
 	"github.com/cosmos/cosmos-sdk/types/rest"
 	"github.com/cosmos/cosmos-sdk/x/genutil/types"
@@ -11,31 +12,37 @@ import (
 
 // QueryGenesisTxs writes the genesis transactions to the response if no error
 // occurs.
-func QueryGenesisTxs(cliCtx context.CLIContext, w http.ResponseWriter) {
-	resultGenesis, err := cliCtx.Client.Genesis()
+func QueryGenesisTxs(clientCtx client.Context, w http.ResponseWriter) {
+	resultGenesis, err := clientCtx.Client.Genesis()
 	if err != nil {
-		rest.WriteErrorResponse(w, http.StatusInternalServerError,
-			sdk.AppendMsgToErr("could not retrieve genesis from client", err.Error()))
+		rest.WriteErrorResponse(
+			w, http.StatusInternalServerError,
+			fmt.Sprintf("failed to retrieve genesis from client: %s", err),
+		)
 		return
 	}
 
-	appState, err := types.GenesisStateFromGenDoc(cliCtx.Codec, *resultGenesis.Genesis)
+	appState, err := types.GenesisStateFromGenDoc(*resultGenesis.Genesis)
 	if err != nil {
-		rest.WriteErrorResponse(w, http.StatusInternalServerError,
-			sdk.AppendMsgToErr("could not decode genesis doc", err.Error()))
+		rest.WriteErrorResponse(
+			w, http.StatusInternalServerError,
+			fmt.Sprintf("failed to decode genesis doc: %s", err),
+		)
 		return
 	}
 
-	genState := types.GetGenesisStateFromAppState(cliCtx.Codec, appState)
+	genState := types.GetGenesisStateFromAppState(clientCtx.LegacyAmino, appState)
 	genTxs := make([]sdk.Tx, len(genState.GenTxs))
 	for i, tx := range genState.GenTxs {
-		err := cliCtx.Codec.UnmarshalJSON(tx, &genTxs[i])
+		err := clientCtx.JSONMarshaler.UnmarshalJSON(tx, &genTxs[i])
 		if err != nil {
-			rest.WriteErrorResponse(w, http.StatusInternalServerError,
-				sdk.AppendMsgToErr("could not decode genesis transaction", err.Error()))
+			rest.WriteErrorResponse(
+				w, http.StatusInternalServerError,
+				fmt.Sprintf("failed to decode genesis transaction: %s", err),
+			)
 			return
 		}
 	}
 
-	rest.PostProcessResponseBare(w, cliCtx, genTxs)
+	rest.PostProcessResponseBare(w, clientCtx, genTxs)
 }

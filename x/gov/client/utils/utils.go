@@ -18,7 +18,7 @@ func NormalizeVoteOption(option string) string {
 		return types.OptionNoWithVeto.String()
 
 	default:
-		return ""
+		return option
 	}
 }
 
@@ -27,9 +27,6 @@ func NormalizeProposalType(proposalType string) string {
 	switch proposalType {
 	case "Text", "text":
 		return types.ProposalTypeText
-
-	case "SoftwareUpgrade", "software_upgrade":
-		return types.ProposalTypeSoftwareUpgrade
 
 	default:
 		return ""
@@ -47,6 +44,7 @@ func NormalizeProposalStatus(status string) string {
 		return "Passed"
 	case "Rejected", "rejected":
 		return "Rejected"
+	default:
+		return status
 	}
-	return ""
 }

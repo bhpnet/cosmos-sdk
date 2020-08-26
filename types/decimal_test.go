@@ -1,14 +1,15 @@
 package types
 
 import (
+	"bytes"
+	"encoding/json"
+	"fmt"
 	"math/big"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
-
 	"github.com/stretchr/testify/require"
-
-	"github.com/cosmos/cosmos-sdk/codec"
+	yaml "gopkg.in/yaml.v2"
 )
 
 // create a decimal from a decimal string (ex. "1234.5678")
@@ -189,6 +190,7 @@ func TestArithmetic(t *testing.T) {
 	}
 
 	for tcIndex, tc := range tests {
+		tc := tc
 		resAdd := tc.d1.Add(tc.d2)
 		resSub := tc.d1.Sub(tc.d2)
 		resMul := tc.d1.Mul(tc.d2)
@@ -267,12 +269,10 @@ func TestTruncate(t *testing.T) {
 	}
 }
 
-var cdc = codec.New()
-
 func TestDecMarshalJSON(t *testing.T) {
 	decimal := func(i int64) Dec {
 		d := NewDec(0)
-		d.Int = new(big.Int).SetInt64(i)
+		d.i = new(big.Int).SetInt64(i)
 		return d
 	}
 	tests := []struct {
@@ -291,6 +291,7 @@ func TestDecMarshalJSON(t *testing.T) {
 		{"12340Int", NewDec(12340), "\"12340.000000000000000000\"", false},
 	}
 	for _, tt := range tests {
+		tt := tt
 		t.Run(tt.name, func(t *testing.T) {
 			got, err := tt.d.MarshalJSON()
 			if (err != nil) != tt.wantErr {
@@ -300,7 +301,8 @@ func TestDecMarshalJSON(t *testing.T) {
 			if !tt.wantErr {
 				assert.Equal(t, tt.want, string(got), "incorrect marshalled value")
 				unmarshalledDec := NewDec(0)
-				unmarshalledDec.UnmarshalJSON(got)
+				err := unmarshalledDec.UnmarshalJSON(got)
+				assert.NoError(t, err)
 				assert.Equal(t, tt.d, unmarshalledDec, "incorrect unmarshalled value")
 			}
 		})
@@ -315,18 +317,6 @@ func TestZeroDeserializationJSON(t *testing.T) {
 	require.NotNil(t, err)
 }
 
-func TestSerializationText(t *testing.T) {
-	d := mustNewDecFromStr(t, "0.333")
-
-	bz, err := d.MarshalText()
-	require.NoError(t, err)
-
-	d2 := Dec{new(big.Int)}
-	err = d2.UnmarshalText(bz)
-	require.NoError(t, err)
-	require.True(t, d.Equal(d2), "original: %v, unmarshalled: %v", d, d2)
-}
-
 func TestSerializationGocodecJSON(t *testing.T) {
 	d := mustNewDecFromStr(t, "0.333")
 
@@ -337,39 +327,6 @@ func TestSerializationGocodecJSON(t *testing.T) {
 	err = cdc.UnmarshalJSON(bz, &d2)
 	require.NoError(t, err)
 	require.True(t, d.Equal(d2), "original: %v, unmarshalled: %v", d, d2)
-}
-
-func TestSerializationGocodecBinary(t *testing.T) {
-	d := mustNewDecFromStr(t, "0.333")
-
-	bz, err := cdc.MarshalBinaryLengthPrefixed(d)
-	require.NoError(t, err)
-
-	var d2 Dec
-	err = cdc.UnmarshalBinaryLengthPrefixed(bz, &d2)
-	require.NoError(t, err)
-	require.True(t, d.Equal(d2), "original: %v, unmarshalled: %v", d, d2)
-}
-
-type testDEmbedStruct struct {
-	Field1 string `json:"f1"`
-	Field2 int    `json:"f2"`
-	Field3 Dec    `json:"f3"`
-}
-
-// TODO make work for UnmarshalJSON
-func TestEmbeddedStructSerializationGocodec(t *testing.T) {
-	obj := testDEmbedStruct{"foo", 10, NewDecWithPrec(1, 3)}
-	bz, err := cdc.MarshalBinaryLengthPrefixed(obj)
-	require.Nil(t, err)
-
-	var obj2 testDEmbedStruct
-	err = cdc.UnmarshalBinaryLengthPrefixed(bz, &obj2)
-	require.Nil(t, err)
-
-	require.Equal(t, obj.Field1, obj2.Field1)
-	require.Equal(t, obj.Field2, obj2.Field2)
-	require.True(t, obj.Field3.Equal(obj2.Field3), "original: %v, unmarshalled: %v", obj, obj2)
 }
 
 func TestStringOverflow(t *testing.T) {
@@ -423,6 +380,68 @@ func TestDecCeil(t *testing.T) {
 	}
 }
 
+func TestPower(t *testing.T) {
+	testCases := []struct {
+		input    Dec
+		power    uint64
+		expected Dec
+	}{
+		{OneDec(), 10, OneDec()},                                               // 1.0 ^ (10) => 1.0
+		{NewDecWithPrec(5, 1), 2, NewDecWithPrec(25, 2)},                       // 0.5 ^ 2 => 0.25
+		{NewDecWithPrec(2, 1), 2, NewDecWithPrec(4, 2)},                        // 0.2 ^ 2 => 0.04
+		{NewDecFromInt(NewInt(3)), 3, NewDecFromInt(NewInt(27))},               // 3 ^ 3 => 27
+		{NewDecFromInt(NewInt(-3)), 4, NewDecFromInt(NewInt(81))},              // -3 ^ 4 = 81
+		{NewDecWithPrec(1414213562373095049, 18), 2, NewDecFromInt(NewInt(2))}, // 1.414213562373095049 ^ 2 = 2
+	}
+
+	for i, tc := range testCases {
+		res := tc.input.Power(tc.power)
+		require.True(t, tc.expected.Sub(res).Abs().LTE(SmallestDec()), "unexpected result for test case %d, input: %v", i, tc.input)
+	}
+}
+
+func TestApproxRoot(t *testing.T) {
+	testCases := []struct {
+		input    Dec
+		root     uint64
+		expected Dec
+	}{
+		{OneDec(), 10, OneDec()},                                               // 1.0 ^ (0.1) => 1.0
+		{NewDecWithPrec(25, 2), 2, NewDecWithPrec(5, 1)},                       // 0.25 ^ (0.5) => 0.5
+		{NewDecWithPrec(4, 2), 2, NewDecWithPrec(2, 1)},                        // 0.04 => 0.2
+		{NewDecFromInt(NewInt(27)), 3, NewDecFromInt(NewInt(3))},               // 27 ^ (1/3) => 3
+		{NewDecFromInt(NewInt(-81)), 4, NewDecFromInt(NewInt(-3))},             // -81 ^ (0.25) => -3
+		{NewDecFromInt(NewInt(2)), 2, NewDecWithPrec(1414213562373095049, 18)}, // 2 ^ (0.5) => 1.414213562373095049
+		{NewDecWithPrec(1005, 3), 31536000, MustNewDecFromStr("1.000000000158153904")},
+	}
+
+	for i, tc := range testCases {
+		res, err := tc.input.ApproxRoot(tc.root)
+		require.NoError(t, err)
+		require.True(t, tc.expected.Sub(res).Abs().LTE(SmallestDec()), "unexpected result for test case %d, input: %v", i, tc.input)
+	}
+}
+
+func TestApproxSqrt(t *testing.T) {
+	testCases := []struct {
+		input    Dec
+		expected Dec
+	}{
+		{OneDec(), OneDec()},                                                // 1.0 => 1.0
+		{NewDecWithPrec(25, 2), NewDecWithPrec(5, 1)},                       // 0.25 => 0.5
+		{NewDecWithPrec(4, 2), NewDecWithPrec(2, 1)},                        // 0.09 => 0.3
+		{NewDecFromInt(NewInt(9)), NewDecFromInt(NewInt(3))},                // 9 => 3
+		{NewDecFromInt(NewInt(-9)), NewDecFromInt(NewInt(-3))},              // -9 => -3
+		{NewDecFromInt(NewInt(2)), NewDecWithPrec(1414213562373095049, 18)}, // 2 => 1.414213562373095049
+	}
+
+	for i, tc := range testCases {
+		res, err := tc.input.ApproxSqrt()
+		require.NoError(t, err)
+		require.Equal(t, tc.expected, res, "unexpected result for test case %d, input: %v", i, tc.input)
+	}
+}
+
 func TestDecSortableBytes(t *testing.T) {
 	tests := []struct {
 		d    Dec
@@ -446,4 +465,95 @@ func TestDecSortableBytes(t *testing.T) {
 
 	assert.Panics(t, func() { SortableDecBytes(NewDec(1000000000000000001)) })
 	assert.Panics(t, func() { SortableDecBytes(NewDec(-1000000000000000001)) })
+}
+
+func TestDecEncoding(t *testing.T) {
+	testCases := []struct {
+		input   Dec
+		rawBz   string
+		jsonStr string
+		yamlStr string
+	}{
+		{
+			NewDec(0), "30",
+			"\"0.000000000000000000\"",
+			"\"0.000000000000000000\"\n",
+		},
+		{
+			NewDecWithPrec(4, 2),
+			"3430303030303030303030303030303030",
+			"\"0.040000000000000000\"",
+			"\"0.040000000000000000\"\n",
+		},
+		{
+			NewDecWithPrec(-4, 2),
+			"2D3430303030303030303030303030303030",
+			"\"-0.040000000000000000\"",
+			"\"-0.040000000000000000\"\n",
+		},
+		{
+			NewDecWithPrec(1414213562373095049, 18),
+			"31343134323133353632333733303935303439",
+			"\"1.414213562373095049\"",
+			"\"1.414213562373095049\"\n",
+		},
+		{
+			NewDecWithPrec(-1414213562373095049, 18),
+			"2D31343134323133353632333733303935303439",
+			"\"-1.414213562373095049\"",
+			"\"-1.414213562373095049\"\n",
+		},
+	}
+
+	for _, tc := range testCases {
+		bz, err := tc.input.Marshal()
+		require.NoError(t, err)
+		require.Equal(t, tc.rawBz, fmt.Sprintf("%X", bz))
+
+		var other Dec
+		require.NoError(t, (&other).Unmarshal(bz))
+		require.True(t, tc.input.Equal(other))
+
+		bz, err = json.Marshal(tc.input)
+		require.NoError(t, err)
+		require.Equal(t, tc.jsonStr, string(bz))
+		require.NoError(t, json.Unmarshal(bz, &other))
+		require.True(t, tc.input.Equal(other))
+
+		bz, err = yaml.Marshal(tc.input)
+		require.NoError(t, err)
+		require.Equal(t, tc.yamlStr, string(bz))
+	}
+}
+
+func BenchmarkMarshalTo(b *testing.B) {
+	bis := []struct {
+		in   Dec
+		want []byte
+	}{
+		{
+			NewDec(1e8), []byte{
+				0x31, 0x30, 0x30, 0x30, 0x30, 0x30, 0x30, 0x30, 0x30,
+				0x30, 0x30, 0x30, 0x30, 0x30, 0x30, 0x30, 0x30, 0x30,
+				0x30, 0x30, 0x30, 0x30, 0x30, 0x30, 0x30, 0x30, 0x30,
+			},
+		},
+		{NewDec(0), []byte{0x30}},
+	}
+	data := make([]byte, 100)
+
+	b.ReportAllocs()
+	b.ResetTimer()
+
+	for i := 0; i < b.N; i++ {
+		for _, bi := range bis {
+			if n, err := bi.in.MarshalTo(data); err != nil {
+				b.Fatal(err)
+			} else {
+				if !bytes.Equal(data[:n], bi.want) {
+					b.Fatalf("Mismatch\nGot:  % x\nWant: % x\n", data[:n], bi.want)
+				}
+			}
+		}
+	}
 }

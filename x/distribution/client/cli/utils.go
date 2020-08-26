@@ -13,13 +13,14 @@ type (
 		Title       string         `json:"title" yaml:"title"`
 		Description string         `json:"description" yaml:"description"`
 		Recipient   sdk.AccAddress `json:"recipient" yaml:"recipient"`
-		Amount      sdk.Coins      `json:"amount" yaml:"amount"`
-		Deposit     sdk.Coins      `json:"deposit" yaml:"deposit"`
+		Amount      string         `json:"amount" yaml:"amount"`
+		Deposit     string         `json:"deposit" yaml:"deposit"`
 	}
 )
 
 // ParseCommunityPoolSpendProposalJSON reads and parses a CommunityPoolSpendProposalJSON from a file.
-func ParseCommunityPoolSpendProposalJSON(cdc *codec.Codec, proposalFile string) (CommunityPoolSpendProposalJSON, error) {
+// TODO: migrate this to protobuf
+func ParseCommunityPoolSpendProposalJSON(cdc *codec.LegacyAmino, proposalFile string) (CommunityPoolSpendProposalJSON, error) {
 	proposal := CommunityPoolSpendProposalJSON{}
 
 	contents, err := ioutil.ReadFile(proposalFile)
@@ -27,7 +28,7 @@ func ParseCommunityPoolSpendProposalJSON(cdc *codec.Codec, proposalFile string) 
 		return proposal, err
 	}
 
-	if err := cdc.UnmarshalJSON(contents, &proposal); err != nil {
+	if err = cdc.UnmarshalJSON(contents, &proposal); err != nil {
 		return proposal, err
 	}
 

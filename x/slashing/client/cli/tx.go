@@ -4,34 +4,28 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/cosmos/cosmos-sdk/client"
-	"github.com/cosmos/cosmos-sdk/client/context"
-	"github.com/cosmos/cosmos-sdk/codec"
+	"github.com/cosmos/cosmos-sdk/client/flags"
+	"github.com/cosmos/cosmos-sdk/client/tx"
 	sdk "github.com/cosmos/cosmos-sdk/types"
-	"github.com/cosmos/cosmos-sdk/x/auth"
-	"github.com/cosmos/cosmos-sdk/x/auth/client/utils"
 	"github.com/cosmos/cosmos-sdk/x/slashing/types"
 )
 
-// GetTxCmd returns the transaction commands for this module
-func GetTxCmd(cdc *codec.Codec) *cobra.Command {
+// NewTxCmd returns a root CLI command handler for all x/slashing transaction commands.
+func NewTxCmd() *cobra.Command {
 	slashingTxCmd := &cobra.Command{
 		Use:                        types.ModuleName,
-		Short:                      "Slashing transactions subcommands",
+		Short:                      "Slashing transaction subcommands",
 		DisableFlagParsing:         true,
 		SuggestionsMinimumDistance: 2,
 		RunE:                       client.ValidateCmd,
 	}
 
-	slashingTxCmd.AddCommand(client.PostCommands(
-		GetCmdUnjail(cdc),
-	)...)
-
+	slashingTxCmd.AddCommand(NewUnjailTxCmd())
 	return slashingTxCmd
 }
 
-// GetCmdUnjail implements the create unjail validator command.
-func GetCmdUnjail(cdc *codec.Codec) *cobra.Command {
-	return &cobra.Command{
+func NewUnjailTxCmd() *cobra.Command {
+	cmd := &cobra.Command{
 		Use:   "unjail",
 		Args:  cobra.NoArgs,
 		Short: "unjail validator previously jailed for downtime",
@@ -40,13 +34,24 @@ func GetCmdUnjail(cdc *codec.Codec) *cobra.Command {
 $ <appcli> tx slashing unjail --from mykey
 `,
 		RunE: func(cmd *cobra.Command, args []string) error {
-			txBldr := auth.NewTxBuilderFromCLI().WithTxEncoder(utils.GetTxEncoder(cdc))
-			cliCtx := context.NewCLIContext().WithCodec(cdc)
+			clientCtx := client.GetClientContextFromCmd(cmd)
+			clientCtx, err := client.ReadTxCommandFlags(clientCtx, cmd.Flags())
+			if err != nil {
+				return err
+			}
 
-			valAddr := cliCtx.GetFromAddress()
+			valAddr := clientCtx.GetFromAddress()
 
 			msg := types.NewMsgUnjail(sdk.ValAddress(valAddr))
-			return utils.GenerateOrBroadcastMsgs(cliCtx, txBldr, []sdk.Msg{msg})
+			if err := msg.ValidateBasic(); err != nil {
+				return err
+			}
+
+			return tx.GenerateOrBroadcastTxCLI(clientCtx, cmd.Flags(), msg)
 		},
 	}
+
+	flags.AddTxFlagsToCmd(cmd)
+
+	return cmd
 }

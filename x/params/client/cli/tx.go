@@ -6,21 +6,19 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/cosmos/cosmos-sdk/client/context"
-	"github.com/cosmos/cosmos-sdk/codec"
+	"github.com/cosmos/cosmos-sdk/client"
+	"github.com/cosmos/cosmos-sdk/client/tx"
 	sdk "github.com/cosmos/cosmos-sdk/types"
 	"github.com/cosmos/cosmos-sdk/version"
-	"github.com/cosmos/cosmos-sdk/x/auth"
-	"github.com/cosmos/cosmos-sdk/x/auth/client/utils"
-	"github.com/cosmos/cosmos-sdk/x/gov"
+	govtypes "github.com/cosmos/cosmos-sdk/x/gov/types"
 	paramscutils "github.com/cosmos/cosmos-sdk/x/params/client/utils"
-	"github.com/cosmos/cosmos-sdk/x/params/types"
+	paramproposal "github.com/cosmos/cosmos-sdk/x/params/types/proposal"
 )
 
-// GetCmdSubmitProposal implements a command handler for submitting a parameter
-// change proposal transaction.
-func GetCmdSubmitProposal(cdc *codec.Codec) *cobra.Command {
-	cmd := &cobra.Command{
+// NewSubmitParamChangeProposalTxCmd returns a CLI command handler for creating
+// a parameter change proposal governance transaction.
+func NewSubmitParamChangeProposalTxCmd() *cobra.Command {
+	return &cobra.Command{
 		Use:   "param-change [proposal-file]",
 		Args:  cobra.ExactArgs(1),
 		Short: "Submit a parameter change proposal",
@@ -52,37 +50,43 @@ Where proposal.json contains:
       "value": 105
     }
   ],
-  "deposit": [
-    {
-      "denom": "stake",
-      "amount": "10000"
-    }
-  ]
+  "deposit": "1000stake"
 }
 `,
-				version.ClientName,
+				version.AppName,
 			),
 		),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			txBldr := auth.NewTxBuilderFromCLI().WithTxEncoder(utils.GetTxEncoder(cdc))
-			cliCtx := context.NewCLIContext().WithCodec(cdc)
-
-			proposal, err := paramscutils.ParseParamChangeProposalJSON(cdc, args[0])
+			clientCtx := client.GetClientContextFromCmd(cmd)
+			clientCtx, err := client.ReadTxCommandFlags(clientCtx, cmd.Flags())
 			if err != nil {
 				return err
 			}
 
-			from := cliCtx.GetFromAddress()
-			content := types.NewParameterChangeProposal(proposal.Title, proposal.Description, proposal.Changes.ToParamChanges())
+			proposal, err := paramscutils.ParseParamChangeProposalJSON(clientCtx.JSONMarshaler, args[0])
+			if err != nil {
+				return err
+			}
 
-			msg := gov.NewMsgSubmitProposal(content, proposal.Deposit, from)
+			from := clientCtx.GetFromAddress()
+			content := paramproposal.NewParameterChangeProposal(
+				proposal.Title, proposal.Description, proposal.Changes.ToParamChanges(),
+			)
+
+			deposit, err := sdk.ParseCoins(proposal.Deposit)
+			if err != nil {
+				return err
+			}
+
+			msg, err := govtypes.NewMsgSubmitProposal(content, deposit, from)
+			if err != nil {
+				return err
+			}
 			if err := msg.ValidateBasic(); err != nil {
 				return err
 			}
 
-			return utils.GenerateOrBroadcastMsgs(cliCtx, txBldr, []sdk.Msg{msg})
+			return tx.GenerateOrBroadcastTxCLI(clientCtx, cmd.Flags(), msg)
 		},
 	}
-
-	return cmd
 }

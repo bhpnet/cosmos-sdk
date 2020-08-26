@@ -7,7 +7,7 @@ import (
 
 	"github.com/tendermint/tendermint/crypto"
 
-	"github.com/cosmos/cosmos-sdk/codec"
+	"github.com/cosmos/cosmos-sdk/codec/legacy"
 	sdk "github.com/cosmos/cosmos-sdk/types"
 )
 
@@ -126,12 +126,12 @@ type (
 )
 
 func (v Validator) MarshalJSON() ([]byte, error) {
-	bechConsPubKey, err := sdk.Bech32ifyConsPub(v.ConsPubKey)
+	bechConsPubKey, err := sdk.Bech32ifyPubKey(sdk.Bech32PubKeyTypeConsPub, v.ConsPubKey)
 	if err != nil {
 		return nil, err
 	}
 
-	return codec.Cdc.MarshalJSON(bechValidator{
+	return legacy.Cdc.MarshalJSON(bechValidator{
 		OperatorAddress:         v.OperatorAddress,
 		ConsPubKey:              bechConsPubKey,
 		Jailed:                  v.Jailed,
@@ -149,10 +149,10 @@ func (v Validator) MarshalJSON() ([]byte, error) {
 // UnmarshalJSON unmarshals the validator from JSON using Bech32
 func (v *Validator) UnmarshalJSON(data []byte) error {
 	bv := &bechValidator{}
-	if err := codec.Cdc.UnmarshalJSON(data, bv); err != nil {
+	if err := legacy.Cdc.UnmarshalJSON(data, bv); err != nil {
 		return err
 	}
-	consPubKey, err := sdk.GetConsPubKeyBech32(bv.ConsPubKey)
+	consPubKey, err := sdk.GetPubKeyFromBech32(sdk.Bech32PubKeyTypeConsPub, bv.ConsPubKey)
 	if err != nil {
 		return err
 	}

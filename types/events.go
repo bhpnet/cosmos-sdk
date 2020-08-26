@@ -6,7 +6,6 @@ import (
 	"strings"
 
 	abci "github.com/tendermint/tendermint/abci/types"
-	cmn "github.com/tendermint/tendermint/libs/common"
 )
 
 // ----------------------------------------------------------------------------
@@ -48,13 +47,6 @@ type (
 	// Event is a type alias for an ABCI Event
 	Event abci.Event
 
-	// Attribute defines an attribute wrapper where the key and value are
-	// strings instead of raw bytes.
-	Attribute struct {
-		Key   string `json:"key"`
-		Value string `json:"value,omitempty"`
-	}
-
 	// Events defines a slice of Event objects
 	Events []Event
 )
@@ -65,7 +57,7 @@ func NewEvent(ty string, attrs ...Attribute) Event {
 	e := Event{Type: ty}
 
 	for _, attr := range attrs {
-		e.Attributes = append(e.Attributes, NewAttribute(attr.Key, attr.Value).ToKVPair())
+		e.Attributes = append(e.Attributes, attr.ToKVPair())
 	}
 
 	return e
@@ -86,8 +78,8 @@ func (a Attribute) String() string {
 }
 
 // ToKVPair converts an Attribute object into a Tendermint key/value pair.
-func (a Attribute) ToKVPair() cmn.KVPair {
-	return cmn.KVPair{Key: toBytes(a.Key), Value: toBytes(a.Value)}
+func (a Attribute) ToKVPair() abci.EventAttribute {
+	return abci.EventAttribute{Key: toBytes(a.Key), Value: toBytes(a.Value)}
 }
 
 // AppendAttributes adds one or more attributes to an Event.
@@ -111,7 +103,7 @@ func (e Events) AppendEvents(events Events) Events {
 // ToABCIEvents converts a slice of Event objects to a slice of abci.Event
 // objects.
 func (e Events) ToABCIEvents() []abci.Event {
-	res := make([]abci.Event, len(e), len(e))
+	res := make([]abci.Event, len(e))
 	for i, ev := range e {
 		res[i] = abci.Event{Type: ev.Type, Attributes: ev.Attributes}
 	}
@@ -141,13 +133,6 @@ var (
 )
 
 type (
-	// StringAttribute defines en Event object wrapper where all the attributes
-	// contain key/value pairs that are strings instead of raw bytes.
-	StringEvent struct {
-		Type       string      `json:"type,omitempty"`
-		Attributes []Attribute `json:"attributes,omitempty"`
-	}
-
 	// StringAttributes defines a slice of StringEvents objects.
 	StringEvents []StringEvent
 )
@@ -174,11 +159,8 @@ func (se StringEvents) Flatten() StringEvents {
 	for _, e := range se {
 		flatEvents[e.Type] = append(flatEvents[e.Type], e.Attributes...)
 	}
-
-	var (
-		res  StringEvents
-		keys []string
-	)
+	keys := make([]string, 0, len(flatEvents))
+	res := make(StringEvents, 0, len(flatEvents)) // appeneded to keys, same length of what is allocated to keys
 
 	for ty := range flatEvents {
 		keys = append(keys, ty)
@@ -209,11 +191,40 @@ func StringifyEvent(e abci.Event) StringEvent {
 // StringifyEvents converts a slice of Event objects into a slice of StringEvent
 // objects.
 func StringifyEvents(events []abci.Event) StringEvents {
-	var res StringEvents
+	res := make(StringEvents, 0, len(events))
 
 	for _, e := range events {
 		res = append(res, StringifyEvent(e))
 	}
 
 	return res.Flatten()
+}
+
+// MarkEventsToIndex returns the set of ABCI events, where each event's attribute
+// has it's index value marked based on the provided set of events to index.
+func MarkEventsToIndex(events []abci.Event, indexSet map[string]struct{}) []abci.Event {
+	indexAll := len(indexSet) == 0
+	updatedEvents := make([]abci.Event, len(events))
+
+	for i, e := range events {
+		updatedEvent := abci.Event{
+			Type:       e.Type,
+			Attributes: make([]abci.EventAttribute, len(e.Attributes)),
+		}
+
+		for j, attr := range e.Attributes {
+			_, index := indexSet[fmt.Sprintf("%s.%s", e.Type, attr.Key)]
+			updatedAttr := abci.EventAttribute{
+				Key:   attr.Key,
+				Value: attr.Value,
+				Index: index || indexAll,
+			}
+
+			updatedEvent.Attributes[j] = updatedAttr
+		}
+
+		updatedEvents[i] = updatedEvent
+	}
+
+	return updatedEvents
 }

@@ -1,31 +1,46 @@
 package keys
 
 import (
+	"fmt"
 	"testing"
 
-	"github.com/spf13/viper"
-	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
+
+	"github.com/cosmos/cosmos-sdk/crypto/hd"
+	"github.com/cosmos/cosmos-sdk/testutil"
 
 	"github.com/cosmos/cosmos-sdk/client/flags"
-	"github.com/cosmos/cosmos-sdk/tests"
+	"github.com/cosmos/cosmos-sdk/crypto/keyring"
+	sdk "github.com/cosmos/cosmos-sdk/types"
 )
 
 func Test_runExportCmd(t *testing.T) {
-	exportKeyCommand := exportKeyCommand()
+	cmd := ExportKeyCommand()
+	cmd.Flags().AddFlagSet(Commands("home").PersistentFlags())
+	mockIn := testutil.ApplyMockIODiscardOutErr(cmd)
 
 	// Now add a temporary keybase
-	kbHome, cleanUp := tests.NewTestCaseDir(t)
-	defer cleanUp()
-	viper.Set(flags.FlagHome, kbHome)
+	kbHome, cleanUp := testutil.NewTestCaseDir(t)
+	t.Cleanup(cleanUp)
 
 	// create a key
-	kb, err := NewKeyBaseFromHomeFlag()
-	assert.NoError(t, err)
-	_, err = kb.CreateAccount("keyname1", tests.TestMnemonic, "", "123456789", 0, 0)
-	assert.NoError(t, err)
+	kb, err := keyring.New(sdk.KeyringServiceName(), keyring.BackendTest, kbHome, mockIn)
+	require.NoError(t, err)
+	t.Cleanup(func() {
+		kb.Delete("keyname1") // nolint:errcheck
+	})
 
-	mockIn, _, _ := tests.ApplyMockIO(exportKeyCommand)
-	mockIn.Reset("123456789\n123456789\n")
+	path := sdk.GetConfig().GetFullFundraiserPath()
+	_, err = kb.NewAccount("keyname1", testutil.TestMnemonic, "", path, hd.Secp256k1)
+	require.NoError(t, err)
+
 	// Now enter password
-	assert.NoError(t, runExportCmd(exportKeyCommand, []string{"keyname1"}))
+	mockIn.Reset("123456789\n123456789\n")
+	cmd.SetArgs([]string{
+		"keyname1",
+		fmt.Sprintf("--%s=%s", flags.FlagHome, kbHome),
+		fmt.Sprintf("--%s=%s", flags.FlagKeyringBackend, keyring.BackendTest),
+	})
+
+	require.NoError(t, cmd.Execute())
 }

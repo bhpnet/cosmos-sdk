@@ -5,10 +5,11 @@ package v0_36
 import (
 	"time"
 
-	"github.com/cosmos/cosmos-sdk/codec"
+	"github.com/tendermint/tendermint/crypto"
+
+	"github.com/cosmos/cosmos-sdk/codec/legacy"
 	sdk "github.com/cosmos/cosmos-sdk/types"
 	v034staking "github.com/cosmos/cosmos-sdk/x/staking/legacy/v0_34"
-	"github.com/tendermint/tendermint/crypto"
 )
 
 const (
@@ -88,12 +89,12 @@ func NewGenesisState(
 }
 
 func (v Validator) MarshalJSON() ([]byte, error) {
-	bechConsPubKey, err := sdk.Bech32ifyConsPub(v.ConsPubKey)
+	bechConsPubKey, err := sdk.Bech32ifyPubKey(sdk.Bech32PubKeyTypeConsPub, v.ConsPubKey)
 	if err != nil {
 		return nil, err
 	}
 
-	return codec.Cdc.MarshalJSON(bechValidator{
+	return legacy.Cdc.MarshalJSON(bechValidator{
 		OperatorAddress:         v.OperatorAddress,
 		ConsPubKey:              bechConsPubKey,
 		Jailed:                  v.Jailed,
@@ -110,10 +111,10 @@ func (v Validator) MarshalJSON() ([]byte, error) {
 
 func (v *Validator) UnmarshalJSON(data []byte) error {
 	bv := &bechValidator{}
-	if err := codec.Cdc.UnmarshalJSON(data, bv); err != nil {
+	if err := legacy.Cdc.UnmarshalJSON(data, bv); err != nil {
 		return err
 	}
-	consPubKey, err := sdk.GetConsPubKeyBech32(bv.ConsPubKey)
+	consPubKey, err := sdk.GetPubKeyFromBech32(sdk.Bech32PubKeyTypeConsPub, bv.ConsPubKey)
 	if err != nil {
 		return err
 	}

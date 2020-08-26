@@ -1,48 +1,82 @@
 package keys
 
 import (
+	"fmt"
 	"testing"
 
-	"github.com/spf13/viper"
-	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 
 	"github.com/tendermint/tendermint/libs/cli"
 
 	"github.com/cosmos/cosmos-sdk/client/flags"
-	"github.com/cosmos/cosmos-sdk/tests"
+	"github.com/cosmos/cosmos-sdk/crypto/hd"
+	"github.com/cosmos/cosmos-sdk/crypto/keyring"
+	"github.com/cosmos/cosmos-sdk/testutil"
+	sdk "github.com/cosmos/cosmos-sdk/types"
 )
 
 func Test_runAddCmdBasic(t *testing.T) {
-	cmd := addKeyCommand()
-	assert.NotNil(t, cmd)
-	mockIn, _, _ := tests.ApplyMockIO(cmd)
+	cmd := AddKeyCommand()
+	cmd.Flags().AddFlagSet(Commands("home").PersistentFlags())
 
-	kbHome, kbCleanUp := tests.NewTestCaseDir(t)
-	assert.NotNil(t, kbHome)
-	defer kbCleanUp()
-	viper.Set(flags.FlagHome, kbHome)
+	mockIn := testutil.ApplyMockIODiscardOutErr(cmd)
 
-	viper.Set(cli.OutputFlag, OutputFormatText)
+	kbHome, kbCleanUp := testutil.NewTestCaseDir(t)
+	require.NotNil(t, kbHome)
+	t.Cleanup(kbCleanUp)
 
-	mockIn.Reset("test1234\ntest1234\n")
-	err := runAddCmd(cmd, []string{"keyname1"})
-	assert.NoError(t, err)
+	kb, err := keyring.New(sdk.KeyringServiceName(), keyring.BackendTest, kbHome, mockIn)
+	require.NoError(t, err)
+	t.Cleanup(func() {
+		_ = kb.Delete("keyname1")
+		_ = kb.Delete("keyname2")
+	})
 
-	viper.Set(cli.OutputFlag, OutputFormatText)
+	cmd.SetArgs([]string{
+		"keyname1",
+		fmt.Sprintf("--%s=%s", flags.FlagHome, kbHome),
+		fmt.Sprintf("--%s=%s", cli.OutputFlag, OutputFormatText),
+		fmt.Sprintf("--%s=%s", flags.FlagKeyAlgorithm, string(hd.Secp256k1Type)),
+		fmt.Sprintf("--%s=%s", flags.FlagKeyringBackend, keyring.BackendTest),
+	})
+	mockIn.Reset("y\n")
+	require.NoError(t, cmd.Execute())
 
-	mockIn.Reset("test1234\ntest1234\n")
-	err = runAddCmd(cmd, []string{"keyname1"})
-	assert.Error(t, err)
+	mockIn.Reset("N\n")
+	require.Error(t, cmd.Execute())
 
-	viper.Set(cli.OutputFlag, OutputFormatText)
+	cmd.SetArgs([]string{
+		"keyname2",
+		fmt.Sprintf("--%s=%s", flags.FlagHome, kbHome),
+		fmt.Sprintf("--%s=%s", cli.OutputFlag, OutputFormatText),
+		fmt.Sprintf("--%s=%s", flags.FlagKeyAlgorithm, string(hd.Secp256k1Type)),
+		fmt.Sprintf("--%s=%s", flags.FlagKeyringBackend, keyring.BackendTest),
+	})
 
-	mockIn.Reset("y\ntest1234\ntest1234\n")
-	err = runAddCmd(cmd, []string{"keyname1"})
-	assert.NoError(t, err)
+	require.NoError(t, cmd.Execute())
+	require.Error(t, cmd.Execute())
 
-	viper.Set(cli.OutputFlag, OutputFormatJSON)
+	mockIn.Reset("y\n")
+	require.NoError(t, cmd.Execute())
 
-	mockIn.Reset("test1234\ntest1234\n")
-	err = runAddCmd(cmd, []string{"keyname2"})
-	assert.NoError(t, err)
+	cmd.SetArgs([]string{
+		"keyname4",
+		fmt.Sprintf("--%s=%s", flags.FlagHome, kbHome),
+		fmt.Sprintf("--%s=%s", cli.OutputFlag, OutputFormatText),
+		fmt.Sprintf("--%s=%s", flags.FlagKeyAlgorithm, string(hd.Secp256k1Type)),
+		fmt.Sprintf("--%s=%s", flags.FlagKeyringBackend, keyring.BackendTest),
+	})
+
+	require.NoError(t, cmd.Execute())
+	require.Error(t, cmd.Execute())
+
+	cmd.SetArgs([]string{
+		"keyname5",
+		fmt.Sprintf("--%s=%s", flags.FlagHome, kbHome),
+		fmt.Sprintf("--%s=true", flags.FlagDryRun),
+		fmt.Sprintf("--%s=%s", cli.OutputFlag, OutputFormatText),
+		fmt.Sprintf("--%s=%s", flags.FlagKeyAlgorithm, string(hd.Secp256k1Type)),
+	})
+
+	require.NoError(t, cmd.Execute())
 }

@@ -8,7 +8,7 @@ import (
 const (
 
 	// default bond denomination
-	DefaultBondDenom = "abhp"
+	DefaultBondDenom = "stake"
 
 	// Delay, in blocks, between when validator updates are returned to the
 	// consensus-engine and when they are applied. For example, if
@@ -23,7 +23,7 @@ const (
 )
 
 // PowerReduction is the amount of staking tokens required for 1 unit of consensus-engine power
-var PowerReduction = NewIntFromBigInt(new(big.Int).Exp(big.NewInt(10), big.NewInt(8), nil))
+var PowerReduction = NewIntFromBigInt(new(big.Int).Exp(big.NewInt(10), big.NewInt(6), nil))
 
 // TokensToConsensusPower - convert input tokens to potential consensus-engine power
 func TokensToConsensusPower(tokens Int) int64 {
@@ -36,13 +36,13 @@ func TokensFromConsensusPower(power int64) Int {
 }
 
 // BondStatus is the status of a validator
-type BondStatus byte
+type BondStatus int32
 
 // staking constants
 const (
-	Unbonded  BondStatus = 0x00
-	Unbonding BondStatus = 0x01
-	Bonded    BondStatus = 0x02
+	Unbonded  BondStatus = 1
+	Unbonding BondStatus = 2
+	Bonded    BondStatus = 3
 
 	BondStatusUnbonded  = "Unbonded"
 	BondStatusUnbonding = "Unbonding"
@@ -57,12 +57,15 @@ func (b BondStatus) Equal(b2 BondStatus) bool {
 // String implements the Stringer interface for BondStatus.
 func (b BondStatus) String() string {
 	switch b {
-	case 0x00:
+	case Unbonded:
 		return BondStatusUnbonded
-	case 0x01:
+
+	case Unbonding:
 		return BondStatusUnbonding
-	case 0x02:
+
+	case Bonded:
 		return BondStatusBonded
+
 	default:
 		panic("invalid bond status")
 	}

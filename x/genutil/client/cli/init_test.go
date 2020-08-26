@@ -1,7 +1,9 @@
-package cli
+package cli_test
 
 import (
 	"bytes"
+	"context"
+	"fmt"
 	"io"
 	"os"
 	"testing"
@@ -9,70 +11,112 @@ import (
 
 	"github.com/spf13/viper"
 	"github.com/stretchr/testify/require"
-	abciServer "github.com/tendermint/tendermint/abci/server"
-	tcmd "github.com/tendermint/tendermint/cmd/tendermint/commands"
+	abci_server "github.com/tendermint/tendermint/abci/server"
 	"github.com/tendermint/tendermint/libs/cli"
 	"github.com/tendermint/tendermint/libs/log"
 
 	"github.com/cosmos/cosmos-sdk/client"
 	"github.com/cosmos/cosmos-sdk/codec"
+	cryptocodec "github.com/cosmos/cosmos-sdk/crypto/codec"
 	"github.com/cosmos/cosmos-sdk/server"
 	"github.com/cosmos/cosmos-sdk/server/mock"
-	"github.com/cosmos/cosmos-sdk/tests"
+	"github.com/cosmos/cosmos-sdk/testutil"
 	sdk "github.com/cosmos/cosmos-sdk/types"
 	"github.com/cosmos/cosmos-sdk/types/module"
 	"github.com/cosmos/cosmos-sdk/x/genutil"
+	genutilcli "github.com/cosmos/cosmos-sdk/x/genutil/client/cli"
+	genutiltest "github.com/cosmos/cosmos-sdk/x/genutil/client/testutil"
 )
 
 var testMbm = module.NewBasicManager(genutil.AppModuleBasic{})
 
 func TestInitCmd(t *testing.T) {
-	defer server.SetupViper(t)()
-	defer setupClientHome(t)()
-	home, cleanup := tests.NewTestCaseDir(t)
-	defer cleanup()
+	tests := []struct {
+		name      string
+		flags     func(dir string) []string
+		shouldErr bool
+		err       error
+	}{
+		{
+			name: "happy path",
+			flags: func(dir string) []string {
+				return []string{
+					"appnode-test",
+				}
+			},
+			shouldErr: false,
 
-	logger := log.NewNopLogger()
-	cfg, err := tcmd.ParseConfig()
-	require.Nil(t, err)
+			err: nil,
+		},
+	}
 
-	ctx := server.NewContext(cfg, logger)
-	cdc := makeCodec()
-	cmd := InitCmd(ctx, cdc, testMbm, home)
+	for _, tt := range tests {
+		tt := tt
+		t.Run(tt.name, func(t *testing.T) {
+			home, cleanup := testutil.NewTestCaseDir(t)
+			defer cleanup()
 
-	require.NoError(t, cmd.RunE(nil, []string{"appnode-test"}))
+			logger := log.NewNopLogger()
+			cfg, err := genutiltest.CreateDefaultTendermintConfig(home)
+			require.NoError(t, err)
+
+			serverCtx := server.NewContext(viper.New(), cfg, logger)
+			clientCtx := client.Context{}.WithJSONMarshaler(makeCodec()).WithHomeDir(home)
+
+			ctx := context.Background()
+			ctx = context.WithValue(ctx, client.ClientContextKey, &clientCtx)
+			ctx = context.WithValue(ctx, server.ServerContextKey, serverCtx)
+
+			cmd := genutilcli.InitCmd(testMbm, home)
+			cmd.SetArgs(
+				tt.flags(home),
+			)
+
+			if tt.shouldErr {
+				err := cmd.ExecuteContext(ctx)
+				require.EqualError(t, err, tt.err.Error())
+			} else {
+				require.NoError(t, cmd.ExecuteContext(ctx))
+			}
+		})
+	}
+
 }
 
 func setupClientHome(t *testing.T) func() {
-	clientDir, cleanup := tests.NewTestCaseDir(t)
-	viper.Set(flagClientHome, clientDir)
+	_, cleanup := testutil.NewTestCaseDir(t)
 	return cleanup
 }
 
 func TestEmptyState(t *testing.T) {
-	defer server.SetupViper(t)()
-	defer setupClientHome(t)()
+	t.Cleanup(setupClientHome(t))
 
-	home, cleanup := tests.NewTestCaseDir(t)
-	defer cleanup()
+	home, cleanup := testutil.NewTestCaseDir(t)
+	t.Cleanup(cleanup)
 
 	logger := log.NewNopLogger()
-	cfg, err := tcmd.ParseConfig()
-	require.Nil(t, err)
+	cfg, err := genutiltest.CreateDefaultTendermintConfig(home)
+	require.NoError(t, err)
 
-	ctx := server.NewContext(cfg, logger)
-	cdc := makeCodec()
+	serverCtx := server.NewContext(viper.New(), cfg, logger)
+	clientCtx := client.Context{}.WithJSONMarshaler(makeCodec()).WithHomeDir(home)
 
-	cmd := InitCmd(ctx, cdc, testMbm, home)
-	require.NoError(t, cmd.RunE(nil, []string{"appnode-test"}))
+	ctx := context.Background()
+	ctx = context.WithValue(ctx, client.ClientContextKey, &clientCtx)
+	ctx = context.WithValue(ctx, server.ServerContextKey, serverCtx)
+
+	cmd := genutilcli.InitCmd(testMbm, home)
+	cmd.SetArgs([]string{"appnode-test", fmt.Sprintf("--%s=%s", cli.HomeFlag, home)})
+
+	require.NoError(t, cmd.ExecuteContext(ctx))
 
 	old := os.Stdout
 	r, w, _ := os.Pipe()
 	os.Stdout = w
-	cmd = server.ExportCmd(ctx, cdc, nil)
 
-	err = cmd.RunE(nil, nil)
-	require.NoError(t, err)
+	cmd = server.ExportCmd(nil, home)
+	cmd.SetArgs([]string{fmt.Sprintf("--%s=%s", cli.HomeFlag, home)})
+	require.NoError(t, cmd.ExecuteContext(ctx))
 
 	outC := make(chan string)
 	go func() {
@@ -93,42 +137,39 @@ func TestEmptyState(t *testing.T) {
 }
 
 func TestStartStandAlone(t *testing.T) {
-	home, cleanup := tests.NewTestCaseDir(t)
-	defer cleanup()
-	viper.Set(cli.HomeFlag, home)
-	defer setupClientHome(t)()
+	home, cleanup := testutil.NewTestCaseDir(t)
+	t.Cleanup(cleanup)
+	t.Cleanup(setupClientHome(t))
 
 	logger := log.NewNopLogger()
-	cfg, err := tcmd.ParseConfig()
-	require.Nil(t, err)
-	ctx := server.NewContext(cfg, logger)
-	cdc := makeCodec()
-	initCmd := InitCmd(ctx, cdc, testMbm, home)
-	require.NoError(t, initCmd.RunE(nil, []string{"appnode-test"}))
+	err := genutiltest.ExecInitCmd(testMbm, home, makeCodec())
+	require.NoError(t, err)
 
 	app, err := mock.NewApp(home, logger)
-	require.Nil(t, err)
+	require.NoError(t, err)
+
 	svrAddr, _, err := server.FreeTCPAddr()
-	require.Nil(t, err)
-	svr, err := abciServer.NewServer(svrAddr, "socket", app)
-	require.Nil(t, err, "error creating listener")
+	require.NoError(t, err)
+
+	svr, err := abci_server.NewServer(svrAddr, "socket", app)
+	require.NoError(t, err, "error creating listener")
+
 	svr.SetLogger(logger.With("module", "abci-server"))
-	svr.Start()
+	err = svr.Start()
+	require.NoError(t, err)
 
 	timer := time.NewTimer(time.Duration(2) * time.Second)
-	select {
-	case <-timer.C:
-		svr.Stop()
+	for range timer.C {
+		err = svr.Stop()
+		require.NoError(t, err)
+		break
 	}
 }
 
 func TestInitNodeValidatorFiles(t *testing.T) {
-	home, cleanup := tests.NewTestCaseDir(t)
-	defer cleanup()
-	viper.Set(cli.HomeFlag, home)
-	viper.Set(client.FlagName, "moniker")
-	cfg, err := tcmd.ParseConfig()
-	require.Nil(t, err)
+	home, cleanup := testutil.NewTestCaseDir(t)
+	cfg, err := genutiltest.CreateDefaultTendermintConfig(home)
+	t.Cleanup(cleanup)
 	nodeID, valPubKey, err := genutil.InitializeNodeValidatorFiles(cfg)
 	require.Nil(t, err)
 	require.NotEqual(t, "", nodeID)
@@ -136,9 +177,9 @@ func TestInitNodeValidatorFiles(t *testing.T) {
 }
 
 // custom tx codec
-func makeCodec() *codec.Codec {
+func makeCodec() *codec.LegacyAmino {
 	var cdc = codec.New()
 	sdk.RegisterCodec(cdc)
-	codec.RegisterCrypto(cdc)
+	cryptocodec.RegisterCrypto(cdc)
 	return cdc
 }

@@ -38,7 +38,7 @@ func (es EventStats) Print(w io.Writer) {
 		panic(err)
 	}
 
-	fmt.Fprintf(w, string(obj))
+	fmt.Fprintln(w, string(obj))
 }
 
 // ExportJSON saves the event stats as a JSON file on a given path
@@ -48,7 +48,7 @@ func (es EventStats) ExportJSON(path string) {
 		panic(err)
 	}
 
-	err = ioutil.WriteFile(path, bz, 0644)
+	err = ioutil.WriteFile(path, bz, 0600)
 	if err != nil {
 		panic(err)
 	}

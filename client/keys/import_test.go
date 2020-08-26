@@ -1,25 +1,33 @@
 package keys
 
 import (
+	"fmt"
 	"io/ioutil"
 	"path/filepath"
 	"testing"
 
-	"github.com/spf13/viper"
-	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
 	"github.com/cosmos/cosmos-sdk/client/flags"
-	"github.com/cosmos/cosmos-sdk/tests"
+	"github.com/cosmos/cosmos-sdk/crypto/keyring"
+	"github.com/cosmos/cosmos-sdk/testutil"
+	sdk "github.com/cosmos/cosmos-sdk/types"
 )
 
 func Test_runImportCmd(t *testing.T) {
-	importKeyCommand := importKeyCommand()
+	cmd := ImportKeyCommand()
+	cmd.Flags().AddFlagSet(Commands("home").PersistentFlags())
+	mockIn := testutil.ApplyMockIODiscardOutErr(cmd)
 
 	// Now add a temporary keybase
-	kbHome, cleanUp := tests.NewTestCaseDir(t)
-	defer cleanUp()
-	viper.Set(flags.FlagHome, kbHome)
+	kbHome, cleanUp := testutil.NewTestCaseDir(t)
+	t.Cleanup(cleanUp)
+
+	kb, err := keyring.New(sdk.KeyringServiceName(), keyring.BackendTest, kbHome, mockIn)
+	require.NoError(t, err)
+	t.Cleanup(func() {
+		kb.Delete("keyname1") // nolint:errcheck
+	})
 
 	keyfile := filepath.Join(kbHome, "key.asc")
 	armoredKey := `-----BEGIN TENDERMINT PRIVATE KEY-----
@@ -33,8 +41,11 @@ HbP+c6JmeJy9JXe2rbbF1QtCX1gLqGcDQPBXiCtFvP7/8wTZtVOPj8vREzhZ9ElO
 `
 	require.NoError(t, ioutil.WriteFile(keyfile, []byte(armoredKey), 0644))
 
-	// Now enter password
-	mockIn, _, _ := tests.ApplyMockIO(importKeyCommand)
 	mockIn.Reset("123456789\n")
-	assert.NoError(t, runImportCmd(importKeyCommand, []string{"keyname1", keyfile}))
+	cmd.SetArgs([]string{
+		"keyname1", keyfile,
+		fmt.Sprintf("--%s=%s", flags.FlagHome, kbHome),
+		fmt.Sprintf("--%s=%s", flags.FlagKeyringBackend, keyring.BackendTest),
+	})
+	require.NoError(t, cmd.Execute())
 }

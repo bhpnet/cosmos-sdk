@@ -2,9 +2,9 @@ package types
 
 import (
 	sdk "github.com/cosmos/cosmos-sdk/types"
-	authexported "github.com/cosmos/cosmos-sdk/x/auth/exported"
+	authtypes "github.com/cosmos/cosmos-sdk/x/auth/types"
+	bankexported "github.com/cosmos/cosmos-sdk/x/bank/exported"
 	stakingexported "github.com/cosmos/cosmos-sdk/x/staking/exported"
-	supplyexported "github.com/cosmos/cosmos-sdk/x/supply/exported"
 )
 
 // DistributionKeeper expected distribution keeper (noalias)
@@ -15,24 +15,31 @@ type DistributionKeeper interface {
 
 // AccountKeeper defines the expected account keeper (noalias)
 type AccountKeeper interface {
-	IterateAccounts(ctx sdk.Context, process func(authexported.Account) (stop bool))
-}
-
-// SupplyKeeper defines the expected supply Keeper (noalias)
-type SupplyKeeper interface {
-	GetSupply(ctx sdk.Context) supplyexported.SupplyI
+	IterateAccounts(ctx sdk.Context, process func(authtypes.AccountI) (stop bool))
+	GetAccount(ctx sdk.Context, addr sdk.AccAddress) authtypes.AccountI // only used for simulation
 
 	GetModuleAddress(name string) sdk.AccAddress
-	GetModuleAccount(ctx sdk.Context, moduleName string) supplyexported.ModuleAccountI
+	GetModuleAccount(ctx sdk.Context, moduleName string) authtypes.ModuleAccountI
 
 	// TODO remove with genesis 2-phases refactor https://github.com/cosmos/cosmos-sdk/issues/2862
-	SetModuleAccount(sdk.Context, supplyexported.ModuleAccountI)
+	SetModuleAccount(sdk.Context, authtypes.ModuleAccountI)
+}
 
-	SendCoinsFromModuleToModule(ctx sdk.Context, senderPool, recipientPool string, amt sdk.Coins) sdk.Error
-	UndelegateCoinsFromModuleToAccount(ctx sdk.Context, senderModule string, recipientAddr sdk.AccAddress, amt sdk.Coins) sdk.Error
-	DelegateCoinsFromAccountToModule(ctx sdk.Context, senderAddr sdk.AccAddress, recipientModule string, amt sdk.Coins) sdk.Error
+// BankKeeper defines the expected interface needed to retrieve account balances.
+type BankKeeper interface {
+	GetAllBalances(ctx sdk.Context, addr sdk.AccAddress) sdk.Coins
+	GetBalance(ctx sdk.Context, addr sdk.AccAddress, denom string) sdk.Coin
+	SetBalances(ctx sdk.Context, addr sdk.AccAddress, balances sdk.Coins) error
+	LockedCoins(ctx sdk.Context, addr sdk.AccAddress) sdk.Coins
+	SpendableCoins(ctx sdk.Context, addr sdk.AccAddress) sdk.Coins
 
-	BurnCoins(ctx sdk.Context, name string, amt sdk.Coins) sdk.Error
+	GetSupply(ctx sdk.Context) bankexported.SupplyI
+
+	SendCoinsFromModuleToModule(ctx sdk.Context, senderPool, recipientPool string, amt sdk.Coins) error
+	UndelegateCoinsFromModuleToAccount(ctx sdk.Context, senderModule string, recipientAddr sdk.AccAddress, amt sdk.Coins) error
+	DelegateCoinsFromAccountToModule(ctx sdk.Context, senderAddr sdk.AccAddress, recipientModule string, amt sdk.Coins) error
+
+	BurnCoins(ctx sdk.Context, name string, amt sdk.Coins) error
 }
 
 // ValidatorSet expected properties for the set of all validators (noalias)
@@ -64,7 +71,7 @@ type ValidatorSet interface {
 	Delegation(sdk.Context, sdk.AccAddress, sdk.ValAddress) stakingexported.DelegationI
 
 	// MaxValidators returns the maximum amount of bonded validators
-	MaxValidators(sdk.Context) uint16
+	MaxValidators(sdk.Context) uint32
 }
 
 // DelegationSet expected properties for the set of all delegations for a particular (noalias)
