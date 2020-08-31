@@ -2,7 +2,6 @@ package mint
 
 import (
 	"encoding/json"
-	"fmt"
 	"math/rand"
 
 	"github.com/gorilla/mux"
@@ -14,8 +13,6 @@ import (
 	"github.com/cosmos/cosmos-sdk/codec"
 	sdk "github.com/cosmos/cosmos-sdk/types"
 	"github.com/cosmos/cosmos-sdk/types/module"
-	"github.com/cosmos/cosmos-sdk/x/mint/client/cli"
-	"github.com/cosmos/cosmos-sdk/x/mint/client/rest"
 	"github.com/cosmos/cosmos-sdk/x/mint/simulation"
 	sim "github.com/cosmos/cosmos-sdk/x/simulation"
 )
@@ -41,32 +38,19 @@ func (AppModuleBasic) RegisterCodec(cdc *codec.Codec) {}
 
 // DefaultGenesis returns default genesis state as raw bytes for the mint
 // module.
-func (AppModuleBasic) DefaultGenesis() json.RawMessage {
-	return ModuleCdc.MustMarshalJSON(DefaultGenesisState())
-}
+func (AppModuleBasic) DefaultGenesis() json.RawMessage { return nil }
 
 // ValidateGenesis performs genesis state validation for the mint module.
-func (AppModuleBasic) ValidateGenesis(bz json.RawMessage) error {
-	var data GenesisState
-	if err := ModuleCdc.UnmarshalJSON(bz, &data); err != nil {
-		return fmt.Errorf("failed to unmarshal %s genesis state: %w", ModuleName, err)
-	}
-
-	return ValidateGenesis(data)
-}
+func (AppModuleBasic) ValidateGenesis(bz json.RawMessage) error { return nil }
 
 // RegisterRESTRoutes registers the REST routes for the mint module.
-func (AppModuleBasic) RegisterRESTRoutes(ctx context.CLIContext, rtr *mux.Router) {
-	rest.RegisterRoutes(ctx, rtr)
-}
+func (AppModuleBasic) RegisterRESTRoutes(ctx context.CLIContext, rtr *mux.Router) {}
 
 // GetTxCmd returns no root tx command for the mint module.
 func (AppModuleBasic) GetTxCmd(_ *codec.Codec) *cobra.Command { return nil }
 
 // GetQueryCmd returns the root query command for the mint module.
-func (AppModuleBasic) GetQueryCmd(cdc *codec.Codec) *cobra.Command {
-	return cli.GetQueryCmd(cdc)
-}
+func (AppModuleBasic) GetQueryCmd(cdc *codec.Codec) *cobra.Command { return nil }
 
 //____________________________________________________________________________
 
@@ -100,30 +84,20 @@ func (AppModule) Route() string { return "" }
 func (am AppModule) NewHandler() sdk.Handler { return nil }
 
 // QuerierRoute returns the mint module's querier route name.
-func (AppModule) QuerierRoute() string {
-	return QuerierRoute
-}
+func (AppModule) QuerierRoute() string { return "" }
 
 // NewQuerierHandler returns the mint module sdk.Querier.
-func (am AppModule) NewQuerierHandler() sdk.Querier {
-	return NewQuerier(am.keeper)
-}
+func (am AppModule) NewQuerierHandler() sdk.Querier { return nil }
 
 // InitGenesis performs genesis initialization for the mint module. It returns
 // no validator updates.
 func (am AppModule) InitGenesis(ctx sdk.Context, data json.RawMessage) []abci.ValidatorUpdate {
-	var genesisState GenesisState
-	ModuleCdc.MustUnmarshalJSON(data, &genesisState)
-	InitGenesis(ctx, am.keeper, genesisState)
 	return []abci.ValidatorUpdate{}
 }
 
 // ExportGenesis returns the exported genesis state as raw bytes for the mint
 // module.
-func (am AppModule) ExportGenesis(ctx sdk.Context) json.RawMessage {
-	gs := ExportGenesis(ctx, am.keeper)
-	return ModuleCdc.MustMarshalJSON(gs)
-}
+func (am AppModule) ExportGenesis(ctx sdk.Context) json.RawMessage { return nil }
 
 // BeginBlock returns the begin blocker for the mint module.
 func (am AppModule) BeginBlock(ctx sdk.Context, _ abci.RequestBeginBlock) {
@@ -156,9 +130,7 @@ func (AppModule) RandomizedParams(r *rand.Rand) []sim.ParamChange {
 }
 
 // RegisterStoreDecoder registers a decoder for mint module's types.
-func (AppModule) RegisterStoreDecoder(sdr sdk.StoreDecoderRegistry) {
-	sdr[StoreKey] = simulation.DecodeStore
-}
+func (AppModule) RegisterStoreDecoder(sdr sdk.StoreDecoderRegistry) {}
 
 // WeightedOperations doesn't return any mint module operation.
 func (AppModule) WeightedOperations(_ module.SimulationState) []sim.WeightedOperation {
