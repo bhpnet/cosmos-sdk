@@ -13,7 +13,6 @@ import (
 	"github.com/cosmos/cosmos-sdk/codec"
 	sdk "github.com/cosmos/cosmos-sdk/types"
 	"github.com/cosmos/cosmos-sdk/types/module"
-	"github.com/cosmos/cosmos-sdk/x/mint/simulation"
 	sim "github.com/cosmos/cosmos-sdk/x/simulation"
 )
 
@@ -116,7 +115,6 @@ func (AppModule) EndBlock(_ sdk.Context, _ abci.RequestEndBlock) []abci.Validato
 
 // GenerateGenesisState creates a randomized GenState of the mint module.
 func (AppModule) GenerateGenesisState(simState *module.SimulationState) {
-	simulation.RandomizedGenState(simState)
 }
 
 // ProposalContents doesn't return any content functions for governance proposals.
@@ -125,9 +123,7 @@ func (AppModule) ProposalContents(_ module.SimulationState) []sim.WeightedPropos
 }
 
 // RandomizedParams creates randomized mint param changes for the simulator.
-func (AppModule) RandomizedParams(r *rand.Rand) []sim.ParamChange {
-	return simulation.ParamChanges(r)
-}
+func (AppModule) RandomizedParams(r *rand.Rand) []sim.ParamChange { return []sim.ParamChange{} }
 
 // RegisterStoreDecoder registers a decoder for mint module's types.
 func (AppModule) RegisterStoreDecoder(sdr sdk.StoreDecoderRegistry) {}
