@@ -24,6 +24,10 @@ func TestCoinTestSuite(t *testing.T) {
 	suite.Run(t, new(coinTestSuite))
 }
 
+func (s *coinTestSuite) SetupSuite() {
+	s.T().Parallel()
+}
+
 // ----------------------------------------------------------------------------
 // Coin tests
 
@@ -92,6 +96,30 @@ func (s *coinTestSuite) TestCoinIsValid() {
 	for i, tc := range cases {
 		s.Require().Equal(tc.expectPass, tc.coin.IsValid(), "unexpected result for IsValid, tc #%d", i)
 	}
+}
+
+func (s *coinTestSuite) TestCustomValidation() {
+
+	newDnmRegex := `[\x{1F600}-\x{1F6FF}]`
+	sdk.CoinDenomRegex = func() string {
+		return newDnmRegex
+	}
+
+	cases := []struct {
+		coin       sdk.Coin
+		expectPass bool
+	}{
+		{sdk.Coin{"🙂", sdk.NewInt(1)}, true},
+		{sdk.Coin{"🙁", sdk.NewInt(1)}, true},
+		{sdk.Coin{"🌶", sdk.NewInt(1)}, false}, // outside the unicode range listed above
+		{sdk.Coin{"asdf", sdk.NewInt(1)}, false},
+		{sdk.Coin{"", sdk.NewInt(1)}, false},
+	}
+
+	for i, tc := range cases {
+		s.Require().Equal(tc.expectPass, tc.coin.IsValid(), "unexpected result for IsValid, tc #%d", i)
+	}
+	sdk.CoinDenomRegex = sdk.DefaultCoinDenomRegex
 }
 
 func (s *coinTestSuite) TestAddCoin() {
@@ -840,7 +868,7 @@ func (s *coinTestSuite) TestNewCoins() {
 	for _, tt := range tests {
 		if tt.wantPanic {
 			s.Require().Panics(func() { sdk.NewCoins(tt.coins...) })
-			return
+			continue
 		}
 		got := sdk.NewCoins(tt.coins...)
 		s.Require().True(got.IsEqual(tt.want))
